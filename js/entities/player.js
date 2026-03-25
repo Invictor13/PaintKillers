@@ -431,7 +431,7 @@ class Player {
         // Apply transformations
         this.tpsPlayerGrp.position.copy(this.yawObject.position);
         this.tpsPlayerGrp.position.y -= 1.6; // Feet on floor
-        this.tpsPlayerGrp.rotation.y = this.yawObject.rotation.y;
+        this.tpsPlayerGrp.rotation.y = this.yawObject.rotation.y + Math.PI;
 
         this.animated.pBodyGroup.position.y = this.animated.currentBodyY;
         this.animated.pBodyGroup.rotation.x = this.animated.currentBodyRotX;

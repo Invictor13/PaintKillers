@@ -33,14 +33,14 @@ class ProjectileManager {
             opacity: 0.9,
             depthWrite: false,
             polygonOffset: true,
-            polygonOffsetFactor: -4,
-            polygonOffsetUnits: -4
+            polygonOffsetFactor: -10,
+            polygonOffsetUnits: -10
         });
         const decGeo = new THREE.PlaneGeometry(0.5 + Math.random()*0.4, 0.5 + Math.random()*0.4);
         const dec = new THREE.Mesh(decGeo, decMat);
 
-        dec.position.copy(pt);
-        dec.lookAt(pt.clone().add(norm));
+        dec.position.copy(pt.clone().add(norm.clone().multiplyScalar(0.01))); // Slight offset to fix Z-fighting
+        dec.lookAt(dec.position.clone().add(norm));
         dec.rotation.z = Math.random() * Math.PI * 2;
 
         this.scene.add(dec);

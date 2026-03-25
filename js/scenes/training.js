@@ -8,6 +8,7 @@ class TrainingScene {
         this.player = null;
         this.projectileManager = null;
         this.shootables = [];
+        this.bots = [];
         this.bottles = [];
         this.dummyGrp = null;
         this.dummyReaction = 0;
@@ -48,6 +49,15 @@ class TrainingScene {
 
         // Global References
         window.AppProjectileManager = this.projectileManager;
+        window.AppBots = this.bots;
+
+        // Spawn Bots
+        if (window.Bot) {
+            for(let i=0; i<3; i++) {
+                const b = new window.Bot(this.scene, this.shootables);
+                this.bots.push(b);
+            }
+        }
         window.AppGameManagerInstance = this.gameManager;
         window.getTerrainHeight = () => 0; // Flat floor
 
@@ -232,6 +242,9 @@ class TrainingScene {
 
         if (this.player) this.player.update(delta, time);
         if (this.projectileManager) this.projectileManager.update(delta);
+        if (this.player && this.bots) {
+            this.bots.forEach(b => b.update(delta, this.player.yawObject.position));
+        }
 
         // Dummy Reaction
         if (this.dummyReaction > 0) {
