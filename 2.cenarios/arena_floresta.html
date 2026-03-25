@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cenário Tático 3D - Paintball</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #5b8c9c; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+        
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            z-index: 100; width: 340px;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s;
+        }
+        #ui-panel.hidden { transform: translateX(-120%); opacity: 0; pointer-events: none; }
+        
+        #controls-help {
+            position: absolute; bottom: 20px; right: 20px;
+            background: rgba(0,0,0,0.7); color: #ddd; padding: 15px; border-radius: 8px;
+            font-size: 0.85rem; pointer-events: none; border: 1px solid rgba(255,255,255,0.1);
+            transition: opacity 0.4s;
+        }
+        #controls-help.hidden { opacity: 0; }
+
+        .btn {
+            width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 6px;
+            font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+            cursor: pointer; transition: all 0.2s; border: none;
+        }
+        .btn-woodsball { background: #10b981; color: white; border-bottom: 3px solid #047857; }
+        .btn-woodsball:active { transform: translateY(2px); border-bottom: 1px solid #047857; }
+        .btn-speedball { background: #3b82f6; color: white; border-bottom: 3px solid #1d4ed8; }
+        .btn-speedball:active { transform: translateY(2px); border-bottom: 1px solid #1d4ed8; }
+
+        #toggle-hud-btn {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(15, 23, 42, 0.8); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold;
+            z-index: 200; backdrop-filter: blur(5px); transition: all 0.2s;
+        }
+        #toggle-hud-btn:hover { background: rgba(30, 41, 59, 1); border-color: #fbbf24; }
+        
+        .hud-select {
+            width: 100%; background: rgba(0, 0, 0, 0.5); color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2); padding: 8px; border-radius: 4px;
+            margin-bottom: 10px; outline: none;
+        }
+        .hud-select:focus { border-color: #fbbf24; }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin: 10px 0; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #fbbf24; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px #fbbf24;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="toggle-hud-btn">👁️ Ocultar HUD</button>
+
+    <div id="ui-panel">
+        <h1 class="text-2xl font-black text-yellow-400 mb-1">Cenário Tático 3D</h1>
+        <p class="text-xs text-gray-400 mb-5">Geração 100% Processual (Relevo Dinâmico)</p>
+        
+        <button id="btn-woodsball" class="btn btn-woodsball">Gerar Floresta / Rio Ext.</button>
+        <button id="btn-speedball" class="btn btn-speedball">Gerar Base Militar</button>
+        
+        <div class="mt-4 pt-4 border-t border-gray-700 text-sm">
+            <h3 class="font-bold text-gray-300 mb-2">Atmosfera & Clima:</h3>
+            
+            <div class="flex justify-between text-xs text-gray-400 mb-1">
+                <label>Horário do Dia</label>
+                <span id="time-display" class="font-mono text-yellow-400 font-bold">12:00</span>
+            </div>
+            <input type="range" id="slider-time" min="0" max="24" step="0.1" value="12">
+
+            <label class="text-xs text-gray-400 mt-3 block mb-1">Condição Climática</label>
+            <select id="sel-weather" class="hud-select text-sm">
+                <option value="clear" selected>Limpo</option>
+                <option value="cloudy">Nublado</option>
+                <option value="wind">Ventania Extrema</option>
+                <option value="fog">Neblina Densa</option>
+                <option value="rain_light">Chuva Leve</option>
+                <option value="rain_heavy">Chuva Torrencial</option>
+                <option value="storm">Tempestade de Verão (Raios)</option>
+                <option value="snow">Neve</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="controls-help">
+        <p>🖱️ <b>Esq:</b> Rotacionar Câmera</p>
+        <p>🖱️ <b>Dir:</b> Mover Câmera (Pan)</p>
+        <p>⚙️ <b>Scroll:</b> Zoom In/Out</p>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURAÇÕES BASE E ENGINE DE ANIMAÇÃO
+        // ==========================================
+        const ARENA_LENGTH = 160;
+        const ARENA_WIDTH = 90;   
+        let mode = 'woodsball'; 
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2('#5b8c9c', 0.003); 
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 3000);
+        camera.position.set(0, 80, 140);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.02; 
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffeedd, 1.0);
+        sunLight.castShadow = true;
+        sunLight.shadow.camera.left = -150; sunLight.shadow.camera.right = 150;
+        sunLight.shadow.camera.top = 150; sunLight.shadow.camera.bottom = -150;
+        sunLight.shadow.mapSize.width = 4096; sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.bias = -0.0005;
+        scene.add(sunLight);
+
+        // Sistema de Criação Cinematográfica
+        let spawnQueue = [];
+        let isSpawning = false;
+
+        function queueForSpawn(obj) {
+            obj.userData.targetScale = obj.scale.clone();
+            obj.scale.set(0.001, 0.001, 0.001);
+            obj.visible = false;
+            spawnQueue.push(obj);
+        }
+
+        // ==========================================
+        // SISTEMA DE SEED (ALEATORIEDADE DO TERRENO)
+        // ==========================================
+        let mapSeed = {
+            offsetX: 0, offsetZ: 0,
+            river1Offset: 0, river2Offset: 0,
+            riverCurve1: 0.04, riverCurve2: 0.03,
+            hillSize: 14, hillOffsetZ: 0
+        };
+
+        function randomizeMapSeed() {
+            mapSeed.offsetX = Math.random() * 1000;
+            mapSeed.offsetZ = Math.random() * 1000;
+            mapSeed.river1Offset = (Math.random() - 0.5) * 40; 
+            mapSeed.river2Offset = (Math.random() - 0.5) * 40;
+            mapSeed.riverCurve1 = 0.02 + Math.random() * 0.05; 
+            mapSeed.riverCurve2 = 0.02 + Math.random() * 0.05;
+            mapSeed.hillSize = 8 + Math.random() * 10; 
+            mapSeed.hillOffsetZ = (Math.random() - 0.5) * 30; 
+        }
+
+        // ==========================================
+        // TEXTURAS PROCEDURAIS E MATERIAIS
+        // ==========================================
+        function createProceduralTexture(type, baseColor, noiseColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 256, 256);
+            ctx.fillStyle = noiseColor;
+            
+            const noiseCount = type === 'wood' ? 1000 : 5000;
+            for(let i=0; i<noiseCount; i++) {
+                const x = Math.random() * 256; const y = Math.random() * 256;
+                if (type === 'wood') {
+                    ctx.globalAlpha = Math.random() * 0.3; ctx.fillRect(x, y, 1, 10 + Math.random() * 30);
+                } else if (type === 'grass') {
+                    ctx.globalAlpha = Math.random() * 0.5; ctx.fillRect(x, y, 2, 2);
+                } else if (type === 'rock' || type === 'concrete') {
+                    ctx.globalAlpha = Math.random() * 0.2; ctx.fillRect(x, y, 2 + Math.random()*3, 2 + Math.random()*3);
+                } else if (type === 'brick') {
+                    ctx.globalAlpha = Math.random() * 0.4; ctx.fillRect(x, y, 3, 1);
+                }
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(2, 2); 
+            return texture;
+        }
+
+        function createNetTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 64, 64); ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(32, 0); ctx.lineTo(64, 32); ctx.lineTo(32, 64); ctx.lineTo(0, 32); ctx.closePath(); ctx.stroke();
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        }
+
+        const texGrass = createProceduralTexture('grass', '#3b5e2b', '#2a421e');
+        const texWood = createProceduralTexture('wood', '#5c4a3d', '#3a2d24');
+        const texRock = createProceduralTexture('rock', '#6b7280', '#4b5563');
+        const texConcrete = createProceduralTexture('concrete', '#9ca3af', '#6b7280');
+        const texBrick = createProceduralTexture('brick', '#8c4830', '#5e2b1b');
+        const texNet = createNetTexture();
+        texGrass.repeat.set(25, 25); texNet.repeat.set(80, 5); 
+
+        const materials = {
+            grass: new THREE.MeshStandardMaterial({ map: texGrass, roughness: 1.0 }),
+            wood: new THREE.MeshStandardMaterial({ map: texWood, roughness: 0.9 }),
+            leaves: new THREE.MeshStandardMaterial({ color: '#2d4c1e', roughness: 0.8 }),
+            rock: new THREE.MeshStandardMaterial({ map: texRock, roughness: 0.9, flatShading: true }),
+            brick: new THREE.MeshStandardMaterial({ map: texBrick, roughness: 0.9 }),
+            concrete: new THREE.MeshStandardMaterial({ map: texConcrete, roughness: 0.7 }),
+            net: new THREE.MeshStandardMaterial({ map: texNet, transparent: true, opacity: 0.7, side: THREE.DoubleSide }),
+            mountain: new THREE.MeshStandardMaterial({ color: '#3d4d42', roughness: 1.0, flatShading: true }),
+            cloud: new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.8 }),
+            water: new THREE.MeshStandardMaterial({ color: '#1ca3ec', transparent: true, opacity: 0.85, roughness: 0.1, metalness: 0.3 }),
+            teamRed: new THREE.MeshStandardMaterial({ color: '#ef4444', roughness: 0.7 }),
+            teamBlue: new THREE.MeshStandardMaterial({ color: '#3b82f6', roughness: 0.7 }),
+            flagPole: new THREE.MeshStandardMaterial({ color: '#d1d5db', metalness: 0.5 }),
+            paintRed: new THREE.MeshStandardMaterial({ color: '#ff0044', roughness: 0.2, transparent: true, opacity: 0.85 }),
+            paintBlue: new THREE.MeshStandardMaterial({ color: '#00ccff', roughness: 0.2, transparent: true, opacity: 0.85 }),
+            paintYellow: new THREE.MeshStandardMaterial({ color: '#ffe600', roughness: 0.2, transparent: true, opacity: 0.85 })
+        };
+
+        const arenaGroup = new THREE.Group();
+        const backgroundGroup = new THREE.Group();
+        scene.add(arenaGroup);
+        scene.add(backgroundGroup);
+        let groundMesh, waterMesh;
+
+        const animatedObjects = { leaves: [], flags: [], clouds: [], turbines: [], growing: [], growingTerrain: null };
+        let worldState = { windSpeed: 1.0, rainIntensity: 0, snowIntensity: 0, isStorm: false, lightningFlash: 0 };
+        
+        let rainParticles, snowParticles;
+        const particleCount = 4000;
+        
+        function buildWeatherParticles() {
+            const rainGeo = new THREE.BufferGeometry();
+            const rainPos = new Float32Array(particleCount * 3);
+            for(let i=0; i<particleCount*3; i+=3) {
+                rainPos[i] = (Math.random() - 0.5) * 400; rainPos[i+1] = Math.random() * 200; rainPos[i+2] = (Math.random() - 0.5) * 400;
+            }
+            rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+            rainParticles = new THREE.Points(rainGeo, new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.5, transparent: true, opacity: 0.5 }));
+            rainParticles.visible = false; scene.add(rainParticles);
+
+            const snowGeo = new THREE.BufferGeometry();
+            const snowPos = new Float32Array(particleCount * 3);
+            for(let i=0; i<particleCount*3; i+=3) {
+                snowPos[i] = (Math.random() - 0.5) * 400; snowPos[i+1] = Math.random() * 200; snowPos[i+2] = (Math.random() - 0.5) * 400;
+            }
+            snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+            snowParticles = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.8 }));
+            snowParticles.visible = false; scene.add(snowParticles);
+        }
+        buildWeatherParticles();
+
+        // ==========================================
+        // MATEMÁTICA DO TERRENO E RIO 100% ALEATÓRIOS
+        // ==========================================
+        function getTerrainHeight(x, z) {
+            let baseExt = 0;
+            
+            if (Math.abs(x) > ARENA_LENGTH/2 || Math.abs(z) > ARENA_WIDTH/2) {
+                let dist = Math.sqrt(x*x + z*z);
+                baseExt = Math.max(0, (dist - Math.max(ARENA_LENGTH/2, ARENA_WIDTH/2)) * 0.12);
+                let wave = Math.sin((x + mapSeed.offsetX) * 0.03) * Math.cos((z + mapSeed.offsetZ) * 0.03);
+                baseExt += (wave * wave) * 15; 
+            }
+
+            let riverDepth = 0;
+            if (mode === 'woodsball') {
+                let riverCurveX = (ARENA_LENGTH / 2 + 40 + mapSeed.river1Offset) + Math.sin((z + mapSeed.offsetZ) * mapSeed.riverCurve1) * 25;
+                let distToRiver = Math.abs(x - riverCurveX);
+                if (distToRiver < 15) {
+                    let carve = Math.cos((distToRiver / 15) * (Math.PI / 2)); 
+                    riverDepth = carve * (baseExt + 3); 
+                }
+                
+                let riverCurveX2 = -(ARENA_LENGTH / 2 + 40 + mapSeed.river2Offset) + Math.cos((z + mapSeed.offsetZ) * mapSeed.riverCurve2) * 25;
+                let distToRiver2 = Math.abs(x - riverCurveX2);
+                if (distToRiver2 < 15) {
+                    let carve = Math.cos((distToRiver2 / 15) * (Math.PI / 2));
+                    riverDepth = Math.max(riverDepth, carve * (baseExt + 3));
+                }
+            }
+
+            if (mode === 'speedball') return baseExt - riverDepth;
+
+            const distFromCenterX = Math.abs(x);
+            let edgeFlatten = 1;
+            if (distFromCenterX > ARENA_LENGTH/2 - 25) { edgeFlatten = Math.max(0, (ARENA_LENGTH/2 - distFromCenterX) / 25); }
+            
+            const distFromCenter = Math.sqrt(x*x + Math.pow(z - mapSeed.hillOffsetZ, 2));
+            let hillHeight = 0;
+            if (distFromCenter < 35) { hillHeight = Math.cos((distFromCenter / 35) * (Math.PI/2)) * mapSeed.hillSize; }
+            
+            let noise = Math.sin((x + mapSeed.offsetX) * 0.08) * Math.cos((z + mapSeed.offsetZ) * 0.08) * 4;
+            noise += Math.sin((x + mapSeed.offsetX) * 0.15 + (z + mapSeed.offsetZ) * 0.1) * 2.0;
+
+            return ((noise + hillHeight) * edgeFlatten) + baseExt - riverDepth;
+        }
+
+        // ==========================================
+        // CONSTRUTORES DO CENÁRIO (COM CINEMÁTICA E FIX DE ANCORAGEM)
+        // ==========================================
+        function createWindTurbine(x, z, facingAngle) {
+            const turbine = new THREE.Group();
+            const y = getTerrainHeight(x, z) - 2;
+
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.5, 50, 8).translate(0, 25, 0), materials.concrete);
+            const nacelle = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 6).translate(0, 50, 1), materials.concrete);
+            turbine.add(mast, nacelle);
+
+            const rotor = new THREE.Group(); rotor.position.set(0, 50, -2);
+            rotor.add(new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 2.5, 8).rotateX(Math.PI/2), materials.concrete));
+
+            for(let i=0; i<3; i++) {
+                const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 22, 0.2).translate(0, 11, 0), materials.concrete);
+                blade.rotation.z = (i * Math.PI * 2) / 3; rotor.add(blade);
+            }
+
+            turbine.add(rotor); turbine.position.set(x, y, z); turbine.rotation.y = facingAngle;
+            backgroundGroup.add(turbine); animatedObjects.turbines.push(rotor);
+            queueForSpawn(turbine);
+        }
+
+        function buildSkyAndHorizon() {
+            const cloudGeo = new THREE.IcosahedronGeometry(10, 1);
+            for(let i=0; i<30; i++) {
+                const cloud = new THREE.Group();
+                const numPuffs = 3 + Math.floor(Math.random()*4);
+                for(let j=0; j<numPuffs; j++) {
+                    const puff = new THREE.Mesh(cloudGeo, materials.cloud);
+                    puff.position.set((Math.random()-0.5)*15, (Math.random()-0.5)*8, (Math.random()-0.5)*15);
+                    puff.scale.set(0.5+Math.random(), 0.5+Math.random()*0.5, 0.5+Math.random());
+                    cloud.add(puff);
+                }
+                cloud.position.set((Math.random()-0.5)*600, 80 + Math.random()*60, (Math.random()-0.5)*600);
+                cloud.userData.baseSpeed = 0.05 + Math.random() * 0.05; 
+                backgroundGroup.add(cloud); animatedObjects.clouds.push(cloud);
+            }
+
+            const mountainGeo = new THREE.ConeGeometry(60, 120, 5); mountainGeo.translate(0, 60, 0); 
+            for(let i=0; i<15; i++) {
+                const angle = (i / 15) * Math.PI * 2 + (Math.random()*0.5);
+                const radius = 300 + Math.random() * 100; 
+                const picos = 2 + Math.floor(Math.random()*2);
+                for(let p=0; p<picos; p++) {
+                    const mountain = new THREE.Mesh(mountainGeo, materials.mountain);
+                    mountain.position.set(Math.cos(angle)*radius + (Math.random()-0.5)*80, -20, Math.sin(angle)*radius + (Math.random()-0.5)*80);
+                    mountain.scale.set(1+Math.random()*1.5, 0.5+Math.random()*2, 1+Math.random()*1.5);
+                    mountain.rotation.y = Math.random() * Math.PI;
+                    backgroundGroup.add(mountain); queueForSpawn(mountain);
+                }
+            }
+
+            for(let i=0; i<10; i++) {
+                const angle = Math.random() * Math.PI * 2, radius = 150 + Math.random() * 80; 
+                createWindTurbine(Math.cos(angle)*radius, Math.sin(angle)*radius, angle + Math.PI/2);
+            }
+        }
+
+        function buildPerimeter() {
+            const wallGroup = new THREE.Group();
+            const wallHeight = 1.5, netHeight = 8;
+            function createWallSegment(length, x, z, rotY) {
+                const segment = new THREE.Group();
+                const base = new THREE.Mesh(new THREE.BoxGeometry(length, wallHeight, 1).translate(0, wallHeight/2, 0), materials.concrete);
+                base.castShadow = true; base.receiveShadow = true; segment.add(base);
+                segment.add(new THREE.Mesh(new THREE.PlaneGeometry(length, netHeight).translate(0, wallHeight + netHeight/2, 0), materials.net));
+                
+                const numPoles = Math.floor(length / 10);
+                const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, netHeight).translate(0, wallHeight + netHeight/2, 0);
+                for(let i=0; i<=numPoles; i++) {
+                    const pole = new THREE.Mesh(poleGeo, materials.flagPole);
+                    pole.position.x = -length/2 + (i * (length/numPoles)); pole.castShadow = true; segment.add(pole);
+                }
+                segment.position.set(x, 0, z); segment.rotation.y = rotY; wallGroup.add(segment); queueForSpawn(segment);
+            }
+            createWallSegment(ARENA_LENGTH, 0, -ARENA_WIDTH/2, 0); createWallSegment(ARENA_LENGTH, 0, ARENA_WIDTH/2, 0);
+            createWallSegment(ARENA_WIDTH, -ARENA_LENGTH/2, 0, Math.PI/2); createWallSegment(ARENA_WIDTH, ARENA_LENGTH/2, 0, Math.PI/2);
+            arenaGroup.add(wallGroup);
+        }
+
+        function addPaintSplatter(parentObj, x, y, z, rotX, rotY, rotZ) {
+            const mats = [materials.paintRed, materials.paintBlue, materials.paintYellow];
+            const paint = new THREE.Mesh(new THREE.CircleGeometry(0.3 + Math.random()*0.5, 8), mats[Math.floor(Math.random() * mats.length)]);
+            paint.position.set(x, y, z); paint.rotation.set(rotX, rotY, rotZ);
+            paint.position.add(new THREE.Vector3(0,0,1).applyEuler(paint.rotation).multiplyScalar(0.01));
+            parentObj.add(paint);
+        }
+
+        function createTree(x, z, isBackground = false) {
+            const y = getTerrainHeight(x, z);
+            if (y < -1.0) return; // Protege de nascer árvore submersa
+
+            const tree = new THREE.Group();
+            const trunkHeight = 4 + Math.random() * 3;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, trunkHeight, 7).translate(0, trunkHeight/2, 0), materials.wood);
+            trunk.castShadow = !isBackground; trunk.receiveShadow = !isBackground; tree.add(trunk);
+
+            if(!isBackground && Math.random() > 0.5) {
+                const pRotY = Math.random() * Math.PI * 2;
+                addPaintSplatter(tree, Math.sin(pRotY)*0.4, 1 + Math.random() * 2, Math.cos(pRotY)*0.4, 0, pRotY, 0);
+            }
+
+            const leavesCount = isBackground ? 1 : 2 + Math.floor(Math.random() * 2);
+            for(let i=0; i<leavesCount; i++) {
+                const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(2 + Math.random(), isBackground ? 0 : 1), materials.leaves);
+                leaf.scale.set(0.8+Math.random()*0.5, 0.8+Math.random()*0.4, 0.8+Math.random()*0.5);
+                leaf.position.set((Math.random()-0.5)*1.5, trunkHeight + (Math.random()*2), (Math.random()-0.5)*1.5);
+                const baseRotX = Math.random()*Math.PI, baseRotZ = Math.random()*Math.PI;
+                leaf.rotation.set(baseRotX, Math.random()*Math.PI, baseRotZ); leaf.castShadow = !isBackground;
+                
+                if(!isBackground) {
+                    leaf.userData.baseRotX = baseRotX; leaf.userData.baseRotZ = baseRotZ;
+                    leaf.userData.swayOffset = Math.random() * Math.PI * 2; animatedObjects.leaves.push(leaf);
+                }
+                tree.add(leaf);
+            }
+            
+            // Afunda as raízes profundamente no chão para não voar em ladeiras íngremes
+            tree.position.set(x, y - 1.5, z);
+            
+            if(isBackground) backgroundGroup.add(tree); else arenaGroup.add(tree);
+            queueForSpawn(tree);
+        }
+
+        function createRock(x, z, scale = 1) {
+            const y = getTerrainHeight(x, z);
+            if (y < -1.0) return; 
+            
+            const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 1), materials.rock);
+            rock.scale.set(scale*(0.8+Math.random()*0.6), scale*(0.4+Math.random()*0.5), scale*(0.8+Math.random()*0.6));
+            // Afunda as pedras com segurança
+            rock.position.set(x, y - (scale * 1.5), z);
+            rock.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+            rock.castShadow = true; rock.receiveShadow = true; arenaGroup.add(rock);
+            queueForSpawn(rock);
+        }
+
+        function createRuin(x, z, rotY) {
+            const y = getTerrainHeight(x, z);
+            if (y < -1.0) return; 
+            const ruin = new THREE.Group();
+            const w1 = new THREE.Mesh(new THREE.BoxGeometry(8, 4.5, 0.5).translate(0, 2.25, 0), materials.brick);
+            w1.castShadow = true; w1.receiveShadow = true; ruin.add(w1);
+            for(let i=0; i<3; i++) addPaintSplatter(w1, (Math.random()-0.5)*6, 1+Math.random()*2, 0.26, 0, 0, 0);
+
+            const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.6, 6).translate(0, 1.8, 3), materials.brick);
+            w2.position.set(4, 0, 0); w2.castShadow = true; w2.receiveShadow = true; ruin.add(w2);
+            
+            // Base afundada
+            ruin.position.set(x, y - 1.5, z); 
+            ruin.rotation.y = rotY; arenaGroup.add(ruin);
+            queueForSpawn(ruin);
+        }
+
+        function createFlagTower(x, z, color) {
+            const tower = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 4).translate(0, 0.75, 0), materials.concrete);
+            base.castShadow = true; base.receiveShadow = true; tower.add(base);
+
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 8).translate(0, 4, 0), materials.flagPole);
+            pole.position.y = 1.5; pole.castShadow = true; tower.add(pole);
+
+            const flagGeo = new THREE.PlaneGeometry(2, 1.2, 5, 2); flagGeo.translate(1, -0.6, 0);
+            const flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide }));
+            flag.position.set(0, 8.5, 0); flag.rotation.y = Math.PI / 4; 
+            
+            flag.userData.basePositions = []; const pos = flagGeo.attributes.position;
+            for(let i=0; i<pos.count; i++) flag.userData.basePositions.push(pos.getZ(i));
+            flag.userData.swayOffset = x; animatedObjects.flags.push(flag);
+            
+            tower.add(flag); 
+            tower.position.set(x, getTerrainHeight(x, z) - 1.0, z); // Afundada no morro
+            arenaGroup.add(tower);
+            queueForSpawn(tower);
+        }
+
+        function createPlayerDummy(x, z, material) {
+            const height = 1.8;
+            const dummy = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, height, 8).translate(0, height/2, 0), material);
+            dummy.position.set(x, getTerrainHeight(x, z) - 0.05, z); dummy.castShadow = true;
+            
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), new THREE.MeshStandardMaterial({color: 0x111111}));
+            head.position.y = height + 0.1; dummy.add(head); arenaGroup.add(dummy); queueForSpawn(dummy);
+        }
+
+        function buildTerrain() {
+            const segments = 150; 
+            const groundGeo = new THREE.PlaneGeometry(ARENA_LENGTH * 4, ARENA_WIDTH * 4, segments, segments);
+            const pos = groundGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                // FIX MATEMÁTICO: O plano 3D rotaciona em -90 graus, transformando o eixo Y local no eixo -Z do mundo.
+                // Passar -pos.getY(i) garante que o relevo seja desenhado em perfeita sincronia com as coordenadas (x, z) dos objetos!
+                pos.setZ(i, getTerrainHeight(pos.getX(i), -pos.getY(i)));
+            }
+            groundGeo.computeVertexNormals();
+            groundMesh = new THREE.Mesh(groundGeo, materials.grass);
+            groundMesh.rotation.x = -Math.PI / 2; groundMesh.receiveShadow = true; 
+            
+            groundMesh.scale.set(1, 0.001, 1);
+            arenaGroup.add(groundMesh);
+            animatedObjects.growingTerrain = groundMesh;
+
+            // Rios Exteriores
+            if (mode === 'woodsball') {
+                const waterGeo = new THREE.PlaneGeometry(ARENA_LENGTH * 4, ARENA_WIDTH * 4, 32, 32);
+                waterMesh = new THREE.Mesh(waterGeo, materials.water);
+                waterMesh.rotation.x = -Math.PI / 2;
+                waterMesh.position.y = -1.8; 
+                
+                const wPos = waterGeo.attributes.position;
+                waterMesh.userData.basePositions = [];
+                for(let i=0; i<wPos.count; i++) waterMesh.userData.basePositions.push(wPos.getZ(i));
+                
+                waterMesh.scale.set(1, 0.001, 1); 
+                arenaGroup.add(waterMesh);
+            }
+            
+            // Floresta Densa do Background (800 Árvores)
+            for (let i = 0; i < 800; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = (Math.max(ARENA_LENGTH, ARENA_WIDTH)/2) + 10 + Math.random() * 140;
+                createTree(Math.cos(angle) * radius, Math.sin(angle) * radius, true); 
+            }
+        }
+
+        function clearAll() {
+            spawnQueue = [];
+            animatedObjects.leaves = []; animatedObjects.flags = []; 
+            animatedObjects.growing = []; animatedObjects.clouds = []; 
+            animatedObjects.turbines = [];
+            while(arenaGroup.children.length > 0) arenaGroup.remove(arenaGroup.children[0]); 
+            while(backgroundGroup.children.length > 0) backgroundGroup.remove(backgroundGroup.children[0]); 
+        }
+
+        function generateLayout() {
+            clearAll(); 
+            randomizeMapSeed(); 
+
+            buildSkyAndHorizon();
+            buildTerrain(); 
+            buildPerimeter(); 
+
+            createFlagTower(-ARENA_LENGTH/2 + 15, 0, '#ef4444'); createFlagTower(ARENA_LENGTH/2 - 15, 0, '#3b82f6');
+
+            for(let i=-2; i<=2; i++) {
+                createPlayerDummy(-ARENA_LENGTH/2 + 20, i*4, materials.teamRed);
+                createPlayerDummy(ARENA_LENGTH/2 - 20, i*4, materials.teamBlue);
+            }
+
+            if (mode === 'woodsball') {
+                createRuin(0, 0, Math.PI / 4); createRuin(5, 5, -Math.PI / 3);
+                
+                // Floresta tática: 100 Árvores (sem aglomeração excessiva)
+                for (let i = 0; i < 100; i++) { 
+                    const x = (Math.random() - 0.5) * (ARENA_LENGTH - 4), z = (Math.random() - 0.5) * (ARENA_WIDTH - 4);
+                    // Protege mais a área em torno das bases
+                    if (Math.abs(x) > ARENA_LENGTH/2 - 35 && Math.abs(z) < 25) continue;
+                    createTree(x, z);
+                }
+                
+                for (let i = 0; i < 80; i++) { 
+                    createRock((Math.random()-0.5)*(ARENA_LENGTH-10), (Math.random()-0.5)*(ARENA_WIDTH-10), 0.5+Math.random()*1.5);
+                }
+                for(let i=0; i<12; i++) createRuin((Math.random()-0.5)*(ARENA_LENGTH-20), (Math.random()-0.5)*(ARENA_WIDTH-15), Math.random()*Math.PI);
+            } else {
+                createRuin(0, -5, 0); createRuin(0, 5, Math.PI);
+                for (let i = 0; i < 30; i++) {
+                    const x = Math.random() * (ARENA_LENGTH / 2 - 25) + 10, z = (Math.random() - 0.5) * (ARENA_WIDTH - 10), rot = Math.random() * Math.PI;
+                    createRuin(x, z, rot); createRuin(-x, -z, rot); 
+                }
+            }
+
+            spawnQueue.sort((a, b) => a.position.lengthSq() - b.position.lengthSq());
+            isSpawning = true;
+        }
+
+        // ==========================================
+        // SISTEMA DE INTERPOLAÇÃO DE LUZ E CLIMA
+        // ==========================================
+        const timeKeys = [
+            { t: 0, sky: '#02050f', sun: '#113355', amb: '#010a14', intensity: 0.1, aInt: 0.05 }, 
+            { t: 5, sky: '#040a18', sun: '#4cc9f0', amb: '#011526', intensity: 0.2, aInt: 0.1 },  
+            { t: 6.5, sky: '#e67e22', sun: '#ff7a00', amb: '#ffb703', intensity: 0.6, aInt: 0.3 }, 
+            { t: 8, sky: '#8ab4f8', sun: '#fff0b3', amb: '#b3c8ff', intensity: 0.9, aInt: 0.4 },  
+            { t: 12, sky: '#5b8c9c', sun: '#ffffff', amb: '#ffffff', intensity: 1.2, aInt: 0.5 }, 
+            { t: 16, sky: '#5b8c9c', sun: '#ffffff', amb: '#ffffff', intensity: 1.0, aInt: 0.45 },
+            { t: 18, sky: '#e67e22', sun: '#ff7a00', amb: '#ffb703', intensity: 0.7, aInt: 0.3 }, 
+            { t: 19.5, sky: '#040a18', sun: '#4cc9f0', amb: '#011526', intensity: 0.2, aInt: 0.1 },
+            { t: 24, sky: '#02050f', sun: '#113355', amb: '#010a14', intensity: 0.1, aInt: 0.05 } 
+        ];
+
+        function lerpColor(c1, c2, factor) {
+            return new THREE.Color(c1).lerp(new THREE.Color(c2), factor);
+        }
+
+        function updateAtmosphere() {
+            const timeVal = parseFloat(document.getElementById('slider-time').value);
+            const weather = document.getElementById('sel-weather').value;
+            
+            const hours = Math.floor(timeVal), minutes = Math.floor((timeVal - hours) * 60);
+            document.getElementById('time-display').innerText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+            let current = timeKeys[0], next = timeKeys[1];
+            for(let i=0; i<timeKeys.length-1; i++) {
+                if(timeVal >= timeKeys[i].t && timeVal <= timeKeys[i+1].t) { current = timeKeys[i]; next = timeKeys[i+1]; break; }
+            }
+            
+            const factor = (timeVal - current.t) / (next.t - current.t);
+            let skyColor = lerpColor(current.sky, next.sky, factor), sunColor = lerpColor(current.sun, next.sun, factor);
+            let ambColor = lerpColor(current.amb, next.amb, factor), cloudColor = skyColor.clone().addScalar(0.2); 
+            let sunInt = current.intensity + (next.intensity - current.intensity) * factor;
+            let ambInt = current.aInt + (next.aInt - current.aInt) * factor;
+
+            const sunAngle = ((timeVal - 6) / 12) * Math.PI, sunRadius = 250;
+            sunLight.position.set(Math.cos(sunAngle) * sunRadius, Math.max(-20, Math.sin(sunAngle) * sunRadius), 50);
+
+            let fogDensity = 0.003;
+            worldState.windSpeed = 1.0; worldState.rainIntensity = 0; worldState.snowIntensity = 0; worldState.isStorm = false;
+
+            if (weather === 'clear') { fogDensity = 0.001; }
+            else if (weather === 'cloudy') { skyColor.lerp(new THREE.Color('#7f8c8d'), 0.7); cloudColor.lerp(new THREE.Color('#7f8c8d'), 0.5); sunInt *= 0.2; ambInt *= 1.3; fogDensity = 0.005; }
+            else if (weather === 'wind') { fogDensity = 0.003; worldState.windSpeed = 5.0; }
+            else if (weather === 'fog') { skyColor.lerp(new THREE.Color('#bdc3c7'), 0.9); if (timeVal < 6 || timeVal > 19) skyColor.set('#0b131a'); sunInt *= 0.05; fogDensity = 0.035; worldState.windSpeed = 0.2;}
+            else if (weather === 'rain_light') { skyColor.lerp(new THREE.Color('#6c7a89'), 0.7); cloudColor.lerp(new THREE.Color('#5c6a79'), 0.8); sunInt *= 0.1; ambInt *= 1.2; fogDensity = 0.008; worldState.rainIntensity = 1; worldState.windSpeed = 1.5;}
+            else if (weather === 'rain_heavy') { skyColor.lerp(new THREE.Color('#34495e'), 0.85); cloudColor.lerp(new THREE.Color('#2c3e50'), 0.9); sunInt *= 0.05; ambInt *= 1.1; fogDensity = 0.015; worldState.rainIntensity = 3; worldState.windSpeed = 3.5;}
+            else if (weather === 'storm') { skyColor.lerp(new THREE.Color('#1a252f'), 0.95); cloudColor.lerp(new THREE.Color('#11181e'), 0.95); sunInt *= 0.0; ambInt *= 0.8; fogDensity = 0.02; worldState.rainIntensity = 5; worldState.windSpeed = 8.0; worldState.isStorm = true;}
+            else if (weather === 'snow') { skyColor.lerp(new THREE.Color('#d2d7d3'), 0.8); cloudColor.lerp(new THREE.Color('#eeeeee'), 0.8); sunInt *= 0.15; ambInt *= 2.0; fogDensity = 0.012; worldState.snowIntensity = 1; worldState.windSpeed = 1.2;}
+
+            rainParticles.visible = worldState.rainIntensity > 0; snowParticles.visible = worldState.snowIntensity > 0;
+            scene.background = skyColor; scene.fog.color = skyColor; scene.fog.density = fogDensity;
+            sunLight.color = sunColor; sunLight.intensity = sunInt; ambientLight.color = ambColor; ambientLight.intensity = ambInt; materials.cloud.color = cloudColor;
+            worldState.baseAmbInt = ambInt; worldState.baseAmbColor = ambColor.clone();
+        }
+
+        // ==========================================
+        // EVENTOS E LOOP
+        // ==========================================
+        document.getElementById('btn-woodsball').addEventListener('click', () => { mode = 'woodsball'; generateLayout(); });
+        document.getElementById('btn-speedball').addEventListener('click', () => { mode = 'speedball'; generateLayout(); });
+        document.getElementById('slider-time').addEventListener('input', updateAtmosphere);
+        document.getElementById('sel-weather').addEventListener('change', updateAtmosphere);
+
+        let hudVisible = true;
+        document.getElementById('toggle-hud-btn').addEventListener('click', (e) => {
+            hudVisible = !hudVisible;
+            document.getElementById('ui-panel').classList.toggle('hidden');
+            document.getElementById('controls-help').classList.toggle('hidden');
+            e.target.innerText = hudVisible ? '👁️ Ocultar HUD' : '👁️ Mostrar HUD';
+        });
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+        generateLayout();
+        updateAtmosphere();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            
+            const time = Date.now() * 0.002;
+            const wind = worldState.windSpeed;
+
+            if(animatedObjects.growingTerrain) {
+                animatedObjects.growingTerrain.scale.y += (1 - animatedObjects.growingTerrain.scale.y) * 0.08;
+                if (waterMesh) waterMesh.scale.y += (1 - waterMesh.scale.y) * 0.08;
+                if(animatedObjects.growingTerrain.scale.y > 0.99) {
+                    animatedObjects.growingTerrain.scale.y = 1;
+                    if(waterMesh) waterMesh.scale.y = 1;
+                    animatedObjects.growingTerrain = null;
+                }
+            }
+
+            if (isSpawning && !animatedObjects.growingTerrain) {
+                let popRate = Math.ceil(spawnQueue.length / 20); 
+                while(popRate > 0 && spawnQueue.length > 0) {
+                    let obj = spawnQueue.shift();
+                    obj.visible = true;
+                    animatedObjects.growing.push(obj);
+                    popRate--;
+                }
+                if(spawnQueue.length === 0) isSpawning = false;
+            }
+
+            for(let i = animatedObjects.growing.length - 1; i >= 0; i--) {
+                let obj = animatedObjects.growing[i];
+                obj.scale.lerp(obj.userData.targetScale, 0.15); 
+                if (obj.scale.distanceTo(obj.userData.targetScale) < 0.01) {
+                    obj.scale.copy(obj.userData.targetScale);
+                    animatedObjects.growing.splice(i, 1);
+                }
+            }
+
+            animatedObjects.leaves.forEach(leaf => {
+                leaf.rotation.x = leaf.userData.baseRotX + Math.sin(time * wind + leaf.userData.swayOffset) * (0.1 * Math.min(wind, 3));
+                leaf.rotation.z = leaf.userData.baseRotZ + Math.cos(time * 0.8 * wind + leaf.userData.swayOffset) * (0.1 * Math.min(wind, 3));
+            });
+
+            animatedObjects.flags.forEach(flag => {
+                const pos = flag.geometry.attributes.position;
+                for(let i=0; i<pos.count; i++) {
+                    const vx = pos.getX(i);
+                    const wave = Math.sin(time * 4 * wind + vx * 2 + flag.userData.swayOffset) * 0.15 * (vx / 2);
+                    pos.setZ(i, flag.userData.basePositions[i] + wave);
+                }
+                pos.needsUpdate = true;
+            });
+
+            if (waterMesh && !animatedObjects.growingTerrain) {
+                const wPos = waterMesh.geometry.attributes.position;
+                for(let i=0; i<wPos.count; i++) {
+                    const vx = wPos.getX(i);
+                    const vy = wPos.getY(i);
+                    const wave = Math.sin(vx * 0.5 + time) * 0.1 + Math.cos(vy * 0.3 + time * 1.5) * 0.1;
+                    wPos.setZ(i, waterMesh.userData.basePositions[i] + wave);
+                }
+                wPos.needsUpdate = true;
+            }
+
+            animatedObjects.clouds.forEach(cloud => {
+                cloud.position.x -= cloud.userData.baseSpeed * wind;
+                if (cloud.position.x < -400) cloud.position.x = 400; 
+            });
+
+            animatedObjects.turbines.forEach(rotor => { rotor.rotation.z -= 0.02 * wind; });
+
+            if (worldState.rainIntensity > 0) {
+                const pos = rainParticles.geometry.attributes.position.array;
+                for(let i=1; i<particleCount*3; i+=3) { 
+                    pos[i] -= 2.0 * worldState.rainIntensity; pos[i-1] -= 0.5 * wind; 
+                    if (pos[i] < 0) { pos[i] = 200; pos[i-1] = camera.position.x + (Math.random() - 0.5) * 400; }
+                }
+                rainParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            if (worldState.snowIntensity > 0) {
+                const pos = snowParticles.geometry.attributes.position.array;
+                for(let i=1; i<particleCount*3; i+=3) { 
+                    pos[i] -= 0.3; pos[i-1] -= 0.2 * wind + Math.sin(time + pos[i+1])*0.1; pos[i+1] += Math.cos(time + pos[i-1])*0.1; 
+                    if (pos[i] < 0) { pos[i] = 150; pos[i-1] = camera.position.x + (Math.random() - 0.5) * 400; }
+                }
+                snowParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            if (worldState.isStorm) {
+                if (worldState.lightningFlash > 0) {
+                    worldState.lightningFlash--;
+                    if (worldState.lightningFlash <= 0) {
+                        worldState.lightningFlash = 0; ambientLight.intensity = worldState.baseAmbInt; ambientLight.color.copy(worldState.baseAmbColor);
+                    }
+                } else if (Math.random() < 0.005) { 
+                    worldState.lightningFlash = Math.floor(5 + Math.random() * 10); ambientLight.intensity = 3.0; ambientLight.color.set('#ffffff');
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>

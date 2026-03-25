@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratório de Dano - Paintball</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; user-select: none; }
+        canvas { display: block; }
+
+        /* UI Overlays */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        
+        /* Mira (Crosshair) */
+        #center-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
+        #crosshair { width: 4px; height: 4px; background-color: #00ffcc; border-radius: 50%; position: relative; box-shadow: 0 0 5px #00ffcc; }
+        .ch-line { position: absolute; background-color: rgba(0, 255, 204, 0.7); }
+        .ch-top { width: 2px; height: 10px; top: -14px; left: 1px; }
+        .ch-bot { width: 2px; height: 10px; bottom: -14px; left: 1px; }
+        .ch-left { width: 10px; height: 2px; top: 1px; left: -14px; }
+        .ch-right { width: 10px; height: 2px; top: 1px; right: -14px; }
+
+        /* Marcador de Acerto */
+        #hit-marker { position: absolute; width: 30px; height: 30px; opacity: 0; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M10 10 L40 40 M90 10 L60 40 M10 90 L40 60 M90 90 L60 60' stroke='white' stroke-width='8' stroke-linecap='round'/%3E%3C/svg%3E"); background-size: cover; }
+        #hit-marker.active { opacity: 1; transform: scale(1.2); transition: transform 0.1s; }
+        #hit-marker.headshot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M10 10 L40 40 M90 10 L60 40 M10 90 L40 60 M90 90 L60 60' stroke='red' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E"); }
+
+        /* HUD Cantos */
+        #hud-bottom-left { position: absolute; bottom: 30px; left: 30px; color: #888; font-size: 0.9rem; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; border: 1px solid #333; }
+        .key-hint { color: #00ffcc; font-weight: bold; }
+
+        /* Menu Start (Blocker) */
+        #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; z-index: 50; }
+        .menu-box { text-align: center; background: rgba(20, 20, 20, 0.95); padding: 40px; border-radius: 12px; border: 2px solid #00ffcc; max-width: 450px; }
+        .menu-box h1 { color: #00ffcc; margin-top: 0; text-transform: uppercase; letter-spacing: 2px; }
+        .btn { border: none; padding: 15px 30px; font-size: 1.1rem; font-weight: 900; text-transform: uppercase; cursor: pointer; border-radius: 6px; margin: 10px 5px; transition: 0.2s; width: 100%;}
+        .btn-start { background: #00ffcc; color: #111; }
+        .btn-start:hover { background: white; }
+        .btn-danger { background: #ff0044; color: white; border: 1px solid #ff6688; }
+        .btn-danger:hover { background: #ff3366; }
+    </style>
+</head>
+<body>
+
+    <div id="blocker">
+        <div class="menu-box">
+            <h1>Laboratório de Dano</h1>
+            <p style="color: #aaa; line-height: 1.6; margin-bottom: 25px;">
+                Teste de Hitboxes e Barras de Vida Flutuantes.<br><br>
+                <b>Headshot:</b> Morte Instantânea<br>
+                <b>Corpo:</b> 3 Tiros para matar<br><br>
+                Use o Mouse para mirar e atirar.
+            </p>
+            <button class="btn btn-start" id="btn-enter">Voltar ao Teste</button>
+            <button class="btn btn-danger" id="btn-respawn-menu">Reviver Alvos Mortos</button>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="center-ui">
+            <div id="crosshair">
+                <div class="ch-line ch-top"></div><div class="ch-line ch-bot"></div>
+                <div class="ch-line ch-left"></div><div class="ch-line ch-right"></div>
+            </div>
+            <div id="hit-marker"></div>
+        </div>
+
+        <div id="hud-bottom-left">
+            <span class="key-hint">W A S D</span> - Mover<br>
+            <span class="key-hint">R</span> - Reviver Alvos<br>
+            <span class="key-hint">ESC</span> - Menu / Pausa
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. SETUP DO LABORATÓRIO
+        // ==========================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#1a1a24');
+        scene.fog = new THREE.FogExp2('#1a1a24', 0.02);
+
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const spotLight = new THREE.SpotLight(0xffffff, 1.2);
+        spotLight.position.set(0, 10, 5);
+        spotLight.angle = Math.PI / 3;
+        spotLight.penumbra = 0.5;
+        spotLight.castShadow = true;
+        spotLight.shadow.mapSize.width = 2048;
+        spotLight.shadow.mapSize.height = 2048;
+        scene.add(spotLight);
+
+        const mats = {
+            floor: new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.8 }),
+            wall: new THREE.MeshStandardMaterial({ color: 0x11111a, roughness: 1.0 }),
+            dummyJersey: new THREE.MeshStandardMaterial({ color: 0xe74c3c, flatShading: true, roughness: 0.7 }),
+            dummyPants: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, roughness: 0.9 }),
+            dummyGear: new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true }),
+            dummyLens: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, metalness: 0.8, roughness: 0.1 }),
+            paintball: new THREE.MeshBasicMaterial({ color: 0x00ffcc })
+        };
+
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), mats.floor);
+        floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+        scene.add(floor);
+
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(40, 10, 1), mats.wall);
+        backWall.position.set(0, 5, -15); backWall.receiveShadow = true;
+        scene.add(backWall);
+
+        // ==========================================
+        // 2. CÂMERA E ARMA FPS
+        // ==========================================
+        let isLocked = false;
+        const yawObj = new THREE.Group();
+        const pitchObj = new THREE.Group();
+        yawObj.position.set(0, 1.6, 5); 
+        scene.add(yawObj);
+        yawObj.add(pitchObj);
+        pitchObj.add(camera);
+
+        const blocker = document.getElementById('blocker');
+        document.getElementById('btn-enter').addEventListener('click', () => document.body.requestPointerLock());
+        
+        document.addEventListener('pointerlockchange', () => {
+            isLocked = document.pointerLockElement === document.body;
+            blocker.style.display = isLocked ? 'none' : 'flex';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isLocked) return;
+            yawObj.rotation.y -= e.movementX * 0.002;
+            pitchObj.rotation.x -= e.movementY * 0.002;
+            pitchObj.rotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, pitchObj.rotation.x));
+        });
+
+        const fpsWeaponGrp = new THREE.Group();
+        const wBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.3), new THREE.MeshStandardMaterial({color: 0x333333}));
+        const wBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3).rotateX(Math.PI/2), new THREE.MeshStandardMaterial({color: 0x111111}));
+        wBarrel.position.set(0, 0.02, -0.3);
+        const wHop = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), new THREE.MeshStandardMaterial({color: 0x111111}));
+        wHop.position.set(0, 0.1, -0.05); wHop.scale.set(0.8, 1, 1.2);
+        fpsWeaponGrp.add(wBody, wBarrel, wHop);
+        fpsWeaponGrp.position.set(0.15, -0.15, -0.3);
+        pitchObj.add(fpsWeaponGrp);
+
+        // ==========================================
+        // 3. SISTEMA DUMMY (Múltiplos e HP Bar)
+        // ==========================================
+        const shootables = []; 
+        shootables.push(floor, backWall);
+
+        function createLimb(r1, r2, len, mat, parent) {
+            const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, len, 6).translate(0, -len/2, 0), mat);
+            m.castShadow = true; parent.add(m); return m;
+        }
+
+        function pointLimb(mesh, start, end) {
+            mesh.position.copy(start);
+            const dir = new THREE.Vector3().subVectors(end, start);
+            if(dir.lengthSq() > 0.0001) mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.normalize());
+        }
+
+        function solveIK(start, end, l1, l2, bend) {
+            const dir = new THREE.Vector3().subVectors(end, start);
+            const max = l1 + l2 - 0.001;
+            let dist = dir.length(); if(dist > max) { dist = max; dir.normalize().multiplyScalar(max); }
+            const norm = dir.clone().normalize();
+            const cosA = (l1*l1 + dist*dist - l2*l2) / (2 * l1 * dist);
+            const alpha = Math.acos(Math.max(-1, Math.min(1, cosA)));
+            const d1 = l1 * Math.cos(alpha), h = l1 * Math.sin(alpha);
+            const base = start.clone().add(norm.clone().multiplyScalar(d1));
+            const n = bend.clone(); n.sub(norm.clone().multiplyScalar(n.dot(norm))).normalize();
+            return base.add(n.multiplyScalar(h));
+        }
+
+        class TargetDummy {
+            constructor(x, z) {
+                this.group = new THREE.Group();
+                this.group.position.set(x, 0, z);
+                this.group.rotation.y = 0; 
+
+                this.bodyGrp = new THREE.Group(); this.group.add(this.bodyGrp);
+                this.headGrp = new THREE.Group(); this.group.add(this.headGrp);
+                this.limbGrp = new THREE.Group(); this.group.add(this.limbGrp);
+                
+                this.hp = 100;
+                this.state = 'idle'; 
+                this.animTimer = 0;
+
+                this.props = { aU: 0.35, aL: 0.35, tL: 0.45, cL: 0.45 };
+                this.anim = { 
+                    bY: 0, bRX: 0, 
+                    hL: new THREE.Vector3(-0.2, 0.9, 0.2), hR: new THREE.Vector3(0.2, 0.9, 0.2), 
+                    fL: new THREE.Vector3(-0.15, 0.05, 0), fR: new THREE.Vector3(0.15, 0.05, 0) 
+                };
+
+                // Hitboxes
+                this.torso = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.55, 0.2).translate(0, -0.275, 0), mats.dummyJersey);
+                this.torso.position.set(0, 1.45, 0); this.torso.castShadow = true; 
+                this.torso.userData = { isHitbox: true, type: 'body', owner: this };
+                shootables.push(this.torso); this.bodyGrp.add(this.torso);
+
+                this.headGrp.position.set(0, 1.45, 0);
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), mats.dummyGear); head.position.y = 0.1;
+                head.userData = { isHitbox: true, type: 'head', owner: this };
+                shootables.push(head);
+                const lens = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.07, 0.04), mats.dummyLens); lens.position.set(0, 0.1, 0.09);
+                this.headGrp.add(head, lens);
+
+                // Membros
+                this.tL = createLimb(0.09, 0.07, this.props.tL, mats.dummyPants, this.limbGrp);
+                this.cL = createLimb(0.07, 0.05, this.props.cL, mats.dummyPants, this.limbGrp);
+                this.tR = createLimb(0.09, 0.07, this.props.tL, mats.dummyPants, this.limbGrp);
+                this.cR = createLimb(0.07, 0.05, this.props.cL, mats.dummyPants, this.limbGrp);
+                this.aLU = createLimb(0.06, 0.05, this.props.aU, mats.dummyJersey, this.limbGrp);
+                this.aLL = createLimb(0.05, 0.04, this.props.aL, mats.dummyJersey, this.limbGrp);
+                this.aRU = createLimb(0.06, 0.05, this.props.aU, mats.dummyJersey, this.limbGrp);
+                this.aRL = createLimb(0.05, 0.04, this.props.aL, mats.dummyJersey, this.limbGrp);
+
+                // BARRA DE VIDA FLUTUANTE (Presa na Cabeça)
+                this.hpBarGroup = new THREE.Group();
+                this.hpBarGroup.position.set(0, 0.4, 0); // Altura acima da cabeça
+                this.headGrp.add(this.hpBarGroup); // Se a cabeça cair, a barra vai junto
+                
+                const bgGeo = new THREE.PlaneGeometry(0.5, 0.08);
+                const bgMat = new THREE.MeshBasicMaterial({ color: 0x333333, depthTest: false, side: THREE.DoubleSide });
+                this.hpBg = new THREE.Mesh(bgGeo, bgMat);
+                this.hpBarGroup.add(this.hpBg);
+
+                const fgGeo = new THREE.PlaneGeometry(0.5, 0.08);
+                fgGeo.translate(0.25, 0, 0); // Translada a geometria para escalar da esquerda para a direita
+                const fgMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, depthTest: false, side: THREE.DoubleSide });
+                this.hpFg = new THREE.Mesh(fgGeo, fgMat);
+                this.hpFg.position.x = -0.25; 
+                this.hpBarGroup.add(this.hpFg);
+
+                scene.add(this.group);
+                this.decals = []; 
+            }
+
+            updateHPBar() {
+                const pct = Math.max(0.001, this.hp / 100);
+                this.hpFg.scale.x = pct;
+
+                if (this.hp > 50) this.hpFg.material.color.setHex(0x00ffcc);
+                else if (this.hp > 25) this.hpFg.material.color.setHex(0xfbbf24);
+                else this.hpFg.material.color.setHex(0xef4444);
+
+                // Ocultar a barra se estiver morto
+                this.hpBarGroup.visible = this.hp > 0;
+            }
+
+            updateIK() {
+                this.bodyGrp.position.y = this.anim.bY; 
+                this.bodyGrp.rotation.x = this.anim.bRX;
+                let rX = this.anim.bRX;
+                
+                this.headGrp.position.set(0, 1.45 * Math.cos(rX) + this.anim.bY, 1.45 * Math.sin(rX));
+                this.headGrp.rotation.x = rX; 
+                
+                // Faz a barra de vida olhar sempre para a câmera
+                // Mas anula a rotação da cabeça pra barra não entortar quando ele morre
+                this.hpBarGroup.rotation.set(-this.headGrp.rotation.x, 0, 0);
+                this.hpBarGroup.lookAt(camera.position);
+
+                let sy = 1.45 * Math.cos(rX) + this.anim.bY, sz = 1.45 * Math.sin(rX);
+                let sL = new THREE.Vector3(-0.22, sy, sz); 
+                let sR = new THREE.Vector3(0.22, sy, sz);
+                
+                let hy = 0.9 * Math.cos(rX) + this.anim.bY, hz = 0.9 * Math.sin(rX);
+                let hL = new THREE.Vector3(-0.15, hy, hz);
+                let hR = new THREE.Vector3(0.15, hy, hz);
+
+                let elbDL = new THREE.Vector3(-1, -0.5, -0.5); 
+                let elbDR = new THREE.Vector3(1, -0.5, -0.5);
+                let elbL = solveIK(sL, this.anim.hL, this.props.aU, this.props.aL, elbDL);
+                pointLimb(this.aLU, sL, elbL); pointLimb(this.aLL, elbL, this.anim.hL);
+                let elbR = solveIK(sR, this.anim.hR, this.props.aU, this.props.aL, elbDR);
+                pointLimb(this.aRU, sR, elbR); pointLimb(this.aRL, elbR, this.anim.hR);
+
+                let kD = new THREE.Vector3(0, 0, 1); 
+                let knL = solveIK(hL, this.anim.fL, this.props.tL, this.props.cL, kD);
+                pointLimb(this.tL, hL, knL); pointLimb(this.cL, knL, this.anim.fL);
+                let knR = solveIK(hR, this.anim.fR, this.props.tL, this.props.cL, kD);
+                pointLimb(this.tR, hR, knR); pointLimb(this.cR, knR, this.anim.fR);
+            }
+
+            takeDamage(type) {
+                if (this.state === 'dead') return;
+
+                if (type === 'head') this.hp = 0;
+                else if (type === 'body') this.hp -= 34;
+
+                this.updateHPBar();
+
+                if (this.hp <= 0) {
+                    this.state = 'dead';
+                } else {
+                    this.state = 'flinch';
+                    this.animTimer = 15; 
+                }
+            }
+
+            respawn() {
+                if(this.state !== 'dead') return;
+                this.hp = 100;
+                this.state = 'idle';
+                this.animTimer = 0;
+                this.updateHPBar();
+                
+                this.decals.forEach(d => { scene.remove(d); d.geometry.dispose(); d.material.dispose(); });
+                this.decals = [];
+            }
+        }
+
+        // Criando múltiplos alvos no laboratório
+        const dummies = [
+            new TargetDummy(-3, -4),
+            new TargetDummy(0, -6),
+            new TargetDummy(3, -8)
+        ];
+
+        // Lógica de Respawn Global
+        function respawnAll() {
+            dummies.forEach(d => d.respawn());
+        }
+
+        // Botão no Menu ESC
+        document.getElementById('btn-respawn-menu').addEventListener('click', () => {
+            respawnAll();
+            document.body.requestPointerLock(); // Volta pro jogo automático
+        });
+
+        // ==========================================
+        // 4. SISTEMA DE TIRO E CONTROLES
+        // ==========================================
+        let moveF = false, moveB = false, moveL = false, moveR = false;
+        
+        document.addEventListener('keydown', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = true; break; 
+                case 'KeyA': moveL = true; break;
+                case 'KeyS': moveB = true; break; 
+                case 'KeyD': moveR = true; break;
+                case 'KeyR': respawnAll(); break; // Tecla R para Respawn in-game
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = false; break; 
+                case 'KeyA': moveL = false; break;
+                case 'KeyS': moveB = false; break; 
+                case 'KeyD': moveR = false; break;
+            }
+        });
+
+        const paintballs = [];
+        const splatterTex = (function(){
+            const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+            const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(64, 64, 30, 0, Math.PI*2); cx.fill();
+            for(let i=0; i<8; i++) {
+                const a = Math.random() * Math.PI*2, d = 30 + Math.random()*20, s = 5 + Math.random()*15;
+                cx.beginPath(); cx.arc(64 + Math.cos(a)*d, 64 + Math.sin(a)*d, s, 0, Math.PI*2); cx.fill();
+            } return new THREE.CanvasTexture(c);
+        })();
+
+        function spawnDecal(pt, norm, hitDummy) {
+            const decMat = new THREE.MeshBasicMaterial({ map: splatterTex, color: 0x00ffcc, transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+            const dec = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), decMat);
+            dec.position.copy(pt); dec.lookAt(pt.clone().add(norm)); dec.rotation.z = Math.random()*Math.PI*2;
+            scene.add(dec); 
+            
+            if (hitDummy) {
+                hitDummy.decals.push(dec); 
+            } else {
+                setTimeout(() => { scene.remove(dec); dec.geometry.dispose(); dec.material.dispose(); }, 8000);
+            }
+        }
+
+        const hmUI = document.getElementById('hit-marker');
+        function triggerHitMarker(isHead) {
+            hmUI.classList.remove('active', 'headshot'); void hmUI.offsetWidth; 
+            if(isHead) hmUI.classList.add('headshot'); hmUI.classList.add('active');
+            setTimeout(() => hmUI.classList.remove('active'), 150);
+        }
+
+        const raycaster = new THREE.Raycaster();
+        let recoilActive = 0;
+
+        document.addEventListener('mousedown', (e) => {
+            if (!isLocked || e.button !== 0) return;
+            recoilActive = 0.08;
+
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), mats.paintball);
+            camera.getWorldPosition(b.position);
+            const shootDir = new THREE.Vector3();
+            camera.getWorldDirection(shootDir);
+            b.position.add(shootDir.clone().multiplyScalar(0.4)); 
+            
+            b.velocity = shootDir.multiplyScalar(2.0); 
+            b.userData = { life: 0 };
+            
+            paintballs.push(b); scene.add(b);
+        });
+
+        // ==========================================
+        // 5. UPDATE LOOP (ANIMAÇÕES E FÍSICA)
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+            const time = Date.now() * 0.001;
+
+            if (isLocked) {
+                const spd = 10.0;
+                let dirZ = Number(moveF) - Number(moveB);
+                let dirX = Number(moveR) - Number(moveL);
+                const fwd = new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                const rgt = new THREE.Vector3(1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                
+                yawObj.position.add(fwd.multiplyScalar(dirZ * spd * delta));
+                yawObj.position.add(rgt.multiplyScalar(dirX * spd * delta));
+                
+                if(yawObj.position.x > 15) yawObj.position.x = 15; if(yawObj.position.x < -15) yawObj.position.x = -15;
+                if(yawObj.position.z > 15) yawObj.position.z = 15; if(yawObj.position.z < -2) yawObj.position.z = -2;
+            }
+
+            if (recoilActive > 0) {
+                fpsWeaponGrp.position.z = -0.3 + (recoilActive * 1.5);
+                fpsWeaponGrp.rotation.x = recoilActive * 1.5;
+                recoilActive -= delta * 0.8;
+            } else {
+                fpsWeaponGrp.position.z = -0.3; fpsWeaponGrp.rotation.x = 0;
+            }
+
+            // Atualiza Todos os Dummies
+            dummies.forEach(d => {
+                let dBY = 0, dRX = 0;
+                let tHL = new THREE.Vector3(-0.2, 0.9, 0.2); 
+                let tHR = new THREE.Vector3(0.2, 0.9, 0.2);
+                let tFL = new THREE.Vector3(-0.15, 0.05, 0); 
+                let tFR = new THREE.Vector3(0.15, 0.05, 0);
+
+                if (d.state === 'dead') {
+                    dBY = -1.2; 
+                    dRX = Math.PI / 2; 
+                    tFL.set(-0.15, 0.05, -0.8); tFR.set(0.15, 0.05, -0.8);
+                    tHL.set(-0.3, -1.0, 0.5); tHR.set(0.3, -1.0, 0.5);
+                } else if (d.state === 'flinch') {
+                    dRX = -0.3; dBY = -0.1;
+                    tHL.set(-0.2, 1.2, 0.4); tHR.set(0.2, 1.2, 0.4);
+                    d.animTimer--;
+                    if(d.animTimer <= 0) d.state = 'idle';
+                } else {
+                    // Cada dummy respira em um tempo ligeiramente diferente usando seu X
+                    dBY = Math.sin(time * 2 + d.group.position.x) * 0.02;
+                }
+
+                d.anim.bY = THREE.MathUtils.lerp(d.anim.bY, dBY, 0.1);
+                d.anim.bRX = THREE.MathUtils.lerp(d.anim.bRX, dRX, 0.1);
+                d.anim.hL.lerp(tHL, 0.15); d.anim.hR.lerp(tHR, 0.15);
+                d.anim.fL.lerp(tFL, 0.15); d.anim.fR.lerp(tFR, 0.15);
+                
+                d.updateIK();
+            });
+
+            // Tiros (Raycaster)
+            for(let i=paintballs.length-1; i>=0; i--) {
+                const b = paintballs[i]; b.userData.life++; 
+                b.velocity.y -= 0.01; 
+                const nextPos = b.position.clone().add(b.velocity);
+                const dist = b.position.distanceTo(nextPos);
+                
+                raycaster.set(b.position, b.velocity.clone().normalize());
+                const hitArr = raycaster.intersectObjects(shootables, true);
+
+                let hit = false;
+                if(hitArr.length > 0 && hitArr[0].distance <= dist) {
+                    hit = true; const impact = hitArr[0]; const obj = impact.object;
+                    
+                    if (obj.userData.isHitbox) {
+                        triggerHitMarker(obj.userData.type === 'head');
+                        obj.userData.owner.takeDamage(obj.userData.type);
+                        spawnDecal(impact.point, impact.face ? impact.face.normal : new THREE.Vector3(0,1,0), obj.userData.owner);
+                    } else {
+                        spawnDecal(impact.point, impact.face ? impact.face.normal : new THREE.Vector3(0,1,0), null);
+                    }
+                }
+
+                if(hit || b.position.y < 0 || b.userData.life > 100) { 
+                    scene.remove(b); b.geometry.dispose(); b.material.dispose(); paintballs.splice(i, 1); 
+                } else { 
+                    b.position.copy(nextPos); 
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        animate();
+    </script>
+</body>
+</html>

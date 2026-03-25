@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Paintball - Customização de Jogador</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            user-select: none;
+            background: linear-gradient(to bottom, #111, #222, #111);
+        }
+        canvas { display: block; }
+        
+        #toggle-panel-btn {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: #dfff00; /* Amarelo Neon / Verde Limão */
+            color: #111;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(223, 255, 0, 0.4);
+            border: 2px solid #b3cc00;
+            transition: transform 0.2s, background 0.2s;
+        }
+        #toggle-panel-btn:hover {
+            transform: scale(1.05);
+            background: #ccff00;
+        }
+
+        #customizer-panel {
+            position: absolute;
+            top: 80px;
+            right: 30px;
+            width: 320px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 25px;
+            border-radius: 8px;
+            border: 2px solid rgba(223, 255, 0, 0.3);
+            backdrop-filter: blur(15px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s;
+        }
+        
+        #customizer-panel.hidden {
+            transform: translateX(120%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #customizer-panel::-webkit-scrollbar { width: 6px; }
+        #customizer-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); border-radius: 4px; }
+        #customizer-panel::-webkit-scrollbar-thumb { background: #dfff00; border-radius: 4px; }
+        
+        .panel-header {
+            font-size: 1.5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #dfff00;
+            border-bottom: 2px solid rgba(223, 255, 0, 0.6);
+            padding-bottom: 10px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 5px rgba(223, 255, 0, 0.3);
+        }
+
+        .control-section {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .control-section h3 {
+            margin: 0 0 5px 0;
+            font-size: 1rem;
+            color: #fff;
+            border-left: 3px solid #dfff00;
+            padding-left: 8px;
+            text-transform: uppercase;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            color: #aaa;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        select {
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            border: 1px solid rgba(223, 255, 0, 0.4);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        select:hover, select:focus { 
+            border-color: #dfff00; 
+            box-shadow: 0 0 8px rgba(223, 255, 0, 0.3);
+        }
+
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 35px;
+            height: 35px;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 0;
+            background: none;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 4px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+
+        .view-controls {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            background: rgba(20, 20, 20, 0.85);
+            padding: 15px 25px;
+            border-radius: 6px;
+            border: 1px solid rgba(223, 255, 0, 0.3);
+            backdrop-filter: blur(10px);
+            font-size: 0.85rem;
+            color: #aaa;
+            letter-spacing: 1px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .view-controls strong { color: #dfff00; }
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <button id="toggle-panel-btn">🎯 Loadout</button>
+
+    <div id="customizer-panel">
+        <div class="panel-header">Arena de Paintball</div>
+
+        <!-- SEÇÃO: AÇÕES -->
+        <div class="control-section" style="border-color: #ff3333;">
+            <h3 style="color: #ff3333; border-left-color: #ff3333;">Movimentação Tática</h3>
+            <div class="control-group">
+                <select id="sel-anim">
+                    <option value="idle">Pronto (Idle)</option>
+                    <option value="walk">Avanço Cauteloso</option>
+                    <option value="run">Rush (Corrida Rápida)</option>
+                    <option value="jump">Mergulho (Superman)</option>
+                    <option value="attack">Rajar! (Atirar)</option>
+                    <option value="crouch">Ajoelhado no Bunker</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- SEÇÃO: EQUIPAMENTOS -->
+        <div class="control-section">
+            <h3>Equipamentos (Gear)</h3>
+            <div class="control-group">
+                <label>MÁSCARA</label>
+                <select id="sel-mask">
+                    <option value="speed">Máscara Speedball (Visão Ampla)</option>
+                    <option value="tactical">Capacete Tático + Máscara</option>
+                    <option value="beanie">Gorro + Máscara</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>MARCADOR (ARMA)</label>
+                <select id="sel-marker">
+                    <option value="speedball">Marcador Speedball (Curto/Rápido)</option>
+                    <option value="woodsball">Marcador Woodsball (Longo/Tático)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>CINTO / COSTAS</label>
+                <select id="sel-pack">
+                    <option value="podpack">Pod Pack (Tubos de Bolinhas)</option>
+                    <option value="vest">Colete Tático</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>ROUPA (VESTUÁRIO)</label>
+                <select id="sel-clothing">
+                    <option value="jersey">Jersey (Camisa Speedball Longa)</option>
+                    <option value="camo">Traje Tático (Camuflagem)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- SEÇÃO: CORES -->
+        <div class="control-section">
+            <h3>Cores do Time</h3>
+            <div class="control-group">
+                <label>JERSEY / ROUPA</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-jersey" value="#2980b9">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>CALÇAS</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-pants" value="#111111">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>MÁSCARA / LENTE</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-lens" value="#dfff00">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>MARCADOR & BOLINHAS</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-marker" value="#e74c3c">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="view-controls">
+        <strong>ROTACIONAR:</strong> Clique Esq. & Arrasta <br><br>
+        <strong>ZOOM:</strong> Scroll do Rato <br><br>
+        <strong>PAN:</strong> Clique Dir. & Arrasta
+    </div>
+
+    <script>
+        // --- SETUP BÁSICO ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x111111, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(-2.5, 1.5, 4.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 10;
+        controls.minDistance = 1.5;
+        controls.target.set(0, 1.0, 0);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- ILUMINAÇÃO DE ARENA (Refletores) ---
+        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x222222, 0.4); 
+        scene.add(ambientLight);
+
+        const spotLight1 = new THREE.SpotLight(0xffffff, 0.8);
+        spotLight1.position.set(4, 6, 4);
+        spotLight1.angle = Math.PI / 4;
+        spotLight1.penumbra = 0.3;
+        spotLight1.castShadow = true;
+        spotLight1.shadow.mapSize.width = 2048;
+        spotLight1.shadow.mapSize.height = 2048;
+        scene.add(spotLight1);
+
+        const spotLight2 = new THREE.SpotLight(0xaaddff, 0.5); // Luz azulada fria do outro lado
+        spotLight2.position.set(-4, 5, -4);
+        scene.add(spotLight2);
+
+        // --- AMBIENTE (Arena Turf/Grama Sintética) ---
+        const podiumGeo = new THREE.CylinderGeometry(2.0, 2.2, 0.2, 16);
+        const podiumMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+        const podium = new THREE.Mesh(podiumGeo, podiumMat);
+        podium.position.set(0, -0.1, 0);
+        podium.receiveShadow = true;
+        scene.add(podium);
+
+        const turfGeo = new THREE.RingGeometry(0.5, 1.9, 16);
+        const turfMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 1.0 }); // Turf escuro
+        const turf = new THREE.Mesh(turfGeo, turfMat);
+        turf.rotation.x = -Math.PI / 2;
+        turf.position.set(0, 0.01, 0);
+        turf.receiveShadow = true;
+        scene.add(turf);
+
+        // Um mini bunker invisível ou caixa baixa para compor cenário
+        const bunkerGeo = new THREE.BoxGeometry(1.0, 0.8, 0.4);
+        const bunkerMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c, roughness: 0.6 }); // Bunker vermelho inflável
+        const bunker = new THREE.Mesh(bunkerGeo, bunkerMat);
+        bunker.position.set(0, 0.4, 1.5);
+        bunker.receiveShadow = true;
+        bunker.castShadow = true;
+        scene.add(bunker);
+
+        // --- ESTADO E MATERIAIS ---
+        const config = {
+            mask: 'speed', marker: 'speedball', pack: 'podpack', clothing: 'jersey',
+            anim: 'idle'
+        };
+
+        const mats = {
+            skin: new THREE.MeshStandardMaterial({ color: 0xe0ac69, flatShading: true, roughness: 0.6 }), 
+            jersey: new THREE.MeshStandardMaterial({ color: 0x2980b9, flatShading: true, roughness: 0.8 }), 
+            pants: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, roughness: 0.9 }), 
+            gear: new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true, roughness: 0.7 }), // Coletes, cintos, luvas
+            lens: new THREE.MeshStandardMaterial({ color: 0xdfff00, flatShading: true, roughness: 0.1, metalness: 0.8 }), // Visor reflexivo
+            markerBody: new THREE.MeshStandardMaterial({ color: 0xe74c3c, flatShading: true, metalness: 0.5, roughness: 0.4 }),
+            markerParts: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, roughness: 0.6 }), // Cilindro de ar, cano
+            paintball: new THREE.MeshBasicMaterial({ color: 0xe74c3c }) // Cor vibrante para a bolinha não ter sombra
+        };
+
+        // --- GRUPOS E REFERÊNCIAS ---
+        const pbGroup = new THREE.Group(); scene.add(pbGroup);
+        const pBodyGroup = new THREE.Group(); pbGroup.add(pBodyGroup);
+        const pHeadGroup = new THREE.Group(); pbGroup.add(pHeadGroup);
+        const pLimbsGroup = new THREE.Group(); pbGroup.add(pLimbsGroup);
+        const pMarkerGroup = new THREE.Group(); scene.add(pMarkerGroup); // Arma
+        
+        // Array para controlar os projéteis
+        let paintballs = [];
+
+        let animated = {
+            leftArm: null, rightArm: null, leftLeg: null, rightLeg: null, 
+            hipL: new THREE.Vector3(), hipR: new THREE.Vector3(),
+            // A mão direita segura o grip atrás, a esquerda segura a frente do marcador
+            baseHandR: new THREE.Vector3(0.2, 1.0, 0.2), 
+            baseHandL: new THREE.Vector3(-0.2, 1.05, 0.5), 
+            baseFootL: new THREE.Vector3(-0.2, 0.05, 0.0), 
+            baseFootR: new THREE.Vector3(0.2, 0.05, 0.0),
+            currentHandL: new THREE.Vector3(), currentHandR: new THREE.Vector3(),
+            currentFootL: new THREE.Vector3(), currentFootR: new THREE.Vector3(),
+            currentBodyY: 0, currentBodyRotX: 0
+        };
+
+        const PROPS = { armUpperLen: 0.35, armLowerLen: 0.35, thighLen: 0.45, calfLen: 0.45 };
+
+        // --- FUNÇÕES IK ---
+        function clearGroup(group) {
+            while(group.children.length > 0){ 
+                let child = group.children[0];
+                group.remove(child); 
+                if(child.geometry) child.geometry.dispose();
+            }
+        }
+
+        function createLimb(rTop, rBot, length, mat, parentGroup) {
+            const geo = new THREE.CylinderGeometry(rTop, rBot, length, 6);
+            geo.translate(0, -length / 2, 0); 
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            parentGroup.add(mesh);
+            return mesh;
+        }
+
+        function orientLimb(mesh, startPos, endPos) {
+            mesh.position.copy(startPos);
+            const dir = new THREE.Vector3().subVectors(endPos, startPos);
+            if (dir.lengthSq() < 0.0001) return; 
+            dir.normalize();
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+        }
+
+        function solveIK(startPos, targetPos, len1, len2, bendDir) {
+            const dir = new THREE.Vector3().subVectors(targetPos, startPos);
+            const maxReach = len1 + len2 - 0.001;
+            let dist = dir.length();
+            if (dist > maxReach) { dist = maxReach; dir.normalize().multiplyScalar(maxReach); }
+            const normalDir = dir.clone().normalize();
+            const cosAlpha = (len1*len1 + dist*dist - len2*len2) / (2 * len1 * dist);
+            const alpha = Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
+            const d1 = len1 * Math.cos(alpha);
+            const basePos = new THREE.Vector3().copy(startPos).add(normalDir.clone().multiplyScalar(d1));
+            const h = len1 * Math.sin(alpha);
+            const n = new THREE.Vector3().copy(bendDir);
+            const projection = normalDir.clone().multiplyScalar(n.dot(normalDir));
+            n.sub(projection).normalize();
+            return basePos.add(n.multiplyScalar(h));
+        }
+
+        // --- CONSTRUINDO O JOGADOR ---
+        function buildPlayer() {
+            clearGroup(pBodyGroup); clearGroup(pHeadGroup); clearGroup(pLimbsGroup); clearGroup(pMarkerGroup);
+            
+            const shoulderLocal = new THREE.Vector3(0, 1.45, 0);
+            const torsoLen = 0.55;
+
+            // TRONCO (Jersey esportiva ou Camuflagem tática)
+            const torsoGeo = new THREE.BoxGeometry(0.35, torsoLen, 0.2);
+            torsoGeo.translate(0, -torsoLen/2, 0);
+            const torso = new THREE.Mesh(torsoGeo, (config.clothing === 'camo' ? mats.pants : mats.jersey));
+            torso.position.copy(shoulderLocal);
+            torso.castShadow = true;
+            pBodyGroup.add(torso);
+
+            // COLETE / POD PACK
+            if (config.pack === 'podpack') {
+                // Cinto grosso
+                const beltGeo = new THREE.BoxGeometry(0.37, 0.12, 0.22);
+                const belt = new THREE.Mesh(beltGeo, mats.gear);
+                belt.position.y = -torsoLen + 0.05;
+                torso.add(belt);
+
+                // Tubos de Paintball nas costas (Pods)
+                for(let i=-1; i<=1; i++) {
+                    const podGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25, 8);
+                    const pod = new THREE.Mesh(podGeo, mats.gear);
+                    pod.position.set(i * 0.12, -torsoLen + 0.05, -0.15); // Presos atrás
+                    pod.rotation.x = -Math.PI / 10; // Inclinados pra puxar fácil
+                    
+                    // Tampa do tubo na cor do time
+                    const capGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.04, 8);
+                    const cap = new THREE.Mesh(capGeo, mats.lens);
+                    cap.position.y = -0.13;
+                    pod.add(cap);
+                    
+                    torso.add(pod);
+                }
+            } else if (config.pack === 'vest') {
+                // Colete tático peitoral
+                const vestGeo = new THREE.BoxGeometry(0.37, 0.4, 0.22);
+                const vest = new THREE.Mesh(vestGeo, mats.gear);
+                vest.position.y = -0.25;
+                torso.add(vest);
+                
+                // Bolsos frontais
+                const pouchGeo = new THREE.BoxGeometry(0.08, 0.12, 0.05);
+                const pouch1 = new THREE.Mesh(pouchGeo, mats.gear); pouch1.position.set(-0.1, -0.3, 0.13);
+                const pouch2 = new THREE.Mesh(pouchGeo, mats.gear); pouch2.position.set(0.1, -0.3, 0.13);
+                torso.add(pouch1, pouch2);
+            }
+
+            // PERNAS E JOELHEIRAS (Joelheiras são lei no Speedball)
+            const hipLocal = new THREE.Vector3(0, 0.9, 0);
+            animated.hipL.set(-0.15, hipLocal.y, hipLocal.z);
+            animated.hipR.set(0.15, hipLocal.y, hipLocal.z);
+
+            const thighL = createLimb(0.09, 0.07, PROPS.thighLen, mats.pants, pLimbsGroup); 
+            const calfL = createLimb(0.07, 0.05, PROPS.calfLen, mats.pants, pLimbsGroup);
+            const thighR = createLimb(0.09, 0.07, PROPS.thighLen, mats.pants, pLimbsGroup);
+            const calfR = createLimb(0.07, 0.05, PROPS.calfLen, mats.pants, pLimbsGroup);
+
+            // Joelheiras grossas
+            const kneeGeo = new THREE.BoxGeometry(0.12, 0.15, 0.12);
+            const kneeL = new THREE.Mesh(kneeGeo, mats.gear); kneeL.position.set(0, 0, 0.03); calfL.add(kneeL);
+            const kneeR = new THREE.Mesh(kneeGeo, mats.gear); kneeR.position.set(0, 0, 0.03); calfR.add(kneeR);
+
+            // Chuteiras de campo/Tênis
+            const shoeGeo = new THREE.BoxGeometry(0.1, 0.08, 0.2);
+            shoeGeo.translate(0, -0.04, 0.04); 
+            const shoeL = new THREE.Mesh(shoeGeo, mats.gear); shoeL.position.y = -PROPS.calfLen; calfL.add(shoeL);
+            const shoeR = new THREE.Mesh(shoeGeo, mats.gear); shoeR.position.y = -PROPS.calfLen; calfR.add(shoeR);
+
+            animated.leftLeg = { up: thighL, low: calfL };
+            animated.rightLeg = { up: thighR, low: calfR };
+
+            // CABEÇA E MÁSCARA
+            pHeadGroup.position.copy(shoulderLocal);
+            pHeadGroup.position.y += 0.05;
+
+            // Cabeça base preta/balaclava
+            const headGeo = new THREE.BoxGeometry(0.16, 0.2, 0.16);
+            const head = new THREE.Mesh(headGeo, mats.gear); 
+            head.position.y = 0.1;
+            pHeadGroup.add(head);
+
+            // Construindo a Máscara (Parte frontal completa)
+            const maskGroup = new THREE.Group();
+            maskGroup.position.set(0, 0.1, 0.04); // Baseada no centro da cabeça
+
+            // Base da máscara (Cobre o rosto e laterais)
+            const maskBaseGeo = new THREE.BoxGeometry(0.18, 0.18, 0.12);
+            const maskBase = new THREE.Mesh(maskBaseGeo, mats.gear);
+            maskBase.position.set(0, 0, 0.05);
+            maskGroup.add(maskBase);
+
+            // Lente térmica espelhada (Larga, ocupando a área dos olhos)
+            const lensGeo = new THREE.BoxGeometry(0.19, 0.07, 0.04);
+            const lens = new THREE.Mesh(lensGeo, mats.lens);
+            lens.position.set(0, 0.03, 0.10); 
+            maskGroup.add(lens);
+
+            // "Grill" (Respirador inferior do queixo)
+            const grillGeo = new THREE.BoxGeometry(0.14, 0.06, 0.05);
+            const grill = new THREE.Mesh(grillGeo, mats.gear);
+            grill.position.set(0, -0.05, 0.11);
+            maskGroup.add(grill);
+
+            // Pala superior (visor de sol) da máscara
+            const visorGeo = new THREE.BoxGeometry(0.19, 0.02, 0.08);
+            const visor = new THREE.Mesh(visorGeo, mats.gear);
+            visor.position.set(0, 0.08, 0.11);
+            visor.rotation.x = -0.1;
+            maskGroup.add(visor);
+
+            pHeadGroup.add(maskGroup);
+
+            // Variações de Cabeça
+            if (config.mask === 'speed') {
+                // Apenas bandana em cima
+                const bandanaGeo = new THREE.BoxGeometry(0.17, 0.04, 0.17);
+                const bandana = new THREE.Mesh(bandanaGeo, mats.lens); // Combina com a cor da lente
+                bandana.position.y = 0.2;
+                pHeadGroup.add(bandana);
+            } else if (config.mask === 'tactical') {
+                // Capacete Militar
+                const helmetGeo = new THREE.SphereGeometry(0.11, 16, 16, 0, Math.PI*2, 0, Math.PI/2);
+                const helmet = new THREE.Mesh(helmetGeo, mats.pants); // Cor da calça
+                helmet.position.y = 0.12;
+                helmet.scale.set(1, 0.8, 1);
+                pHeadGroup.add(helmet);
+            } else if (config.mask === 'beanie') {
+                const beanieGeo = new THREE.SphereGeometry(0.1, 16, 16, 0, Math.PI*2, 0, Math.PI/2);
+                const beanie = new THREE.Mesh(beanieGeo, mats.gear);
+                beanie.position.y = 0.12;
+                beanie.scale.set(1, 0.9, 1);
+                pHeadGroup.add(beanie);
+            }
+
+            // BRAÇOS E LUVAS
+            const armMat = (config.clothing === 'camo' ? mats.pants : mats.jersey);
+            const armL_Up = createLimb(0.06, 0.05, PROPS.armUpperLen, armMat, pLimbsGroup);
+            const armL_Low = createLimb(0.05, 0.04, PROPS.armLowerLen, armMat, pLimbsGroup); 
+            const armR_Up = createLimb(0.06, 0.05, PROPS.armUpperLen, armMat, pLimbsGroup);
+            const armR_Low = createLimb(0.05, 0.04, PROPS.armLowerLen, armMat, pLimbsGroup);
+
+            // Luvas completas/meio dedo
+            const handGeo = new THREE.BoxGeometry(0.05, 0.08, 0.05);
+            handGeo.translate(0, -0.04, 0); 
+            const handL = new THREE.Mesh(handGeo, mats.gear); handL.position.y = -PROPS.armLowerLen; armL_Low.add(handL);
+            const handR = new THREE.Mesh(handGeo, mats.gear); handR.position.y = -PROPS.armLowerLen; armR_Low.add(handR); 
+
+            animated.leftArm = { up: armL_Up, low: armL_Low };
+            animated.rightArm = { up: armR_Up, low: armR_Low };
+            animated.shoulderL = new THREE.Vector3(-0.22, shoulderLocal.y, shoulderLocal.z);
+            animated.shoulderR = new THREE.Vector3(0.22, shoulderLocal.y, shoulderLocal.z);
+
+            animated.currentHandL.copy(animated.baseHandL);
+            animated.currentHandR.copy(animated.baseHandR);
+            animated.currentFootL.copy(animated.baseFootL);
+            animated.currentFootR.copy(animated.baseFootR);
+
+            // --- MARCADOR DE PAINTBALL (Arma) ---
+            // O pivô (0,0,0) do pMarkerGroup será no Grip da mão DIREITA.
+            
+            // Corpo principal (Receiver)
+            const bodyGeo = new THREE.BoxGeometry(0.05, 0.12, 0.25);
+            const body = new THREE.Mesh(bodyGeo, mats.markerBody);
+            body.position.set(0, 0.05, 0.1); // Move o corpo um pouco pra frente do grip
+            pMarkerGroup.add(body);
+
+            // Grip (Onde a mão direita segura)
+            const gripGeo = new THREE.BoxGeometry(0.04, 0.15, 0.05);
+            const grip = new THREE.Mesh(gripGeo, mats.gear);
+            grip.position.set(0, -0.05, 0);
+            pMarkerGroup.add(grip);
+
+            // Cilindro de Ar (HPA Tank) - Preso embaixo/atrás do grip
+            const tankGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.25, 12);
+            const tank = new THREE.Mesh(tankGeo, mats.markerParts);
+            tank.rotation.x = Math.PI / 2;
+            tank.position.set(0, -0.1, -0.15);
+            pMarkerGroup.add(tank);
+
+            // Hopper / Loader (Carregador de bolinhas no topo)
+            const hopperGeo = new THREE.SphereGeometry(0.08, 16, 16);
+            const hopper = new THREE.Mesh(hopperGeo, mats.markerParts);
+            hopper.scale.set(0.8, 1, 1.2); // Formato ovalado aerodinâmico
+            hopper.position.set(0, 0.18, 0.08);
+            
+            // Cano que liga o hopper no marcador (Feedneck)
+            const feedneckGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.05);
+            const feedneck = new THREE.Mesh(feedneckGeo, mats.markerParts);
+            feedneck.position.set(0, 0.12, 0.08);
+            pMarkerGroup.add(hopper, feedneck);
+
+            // Cano (Barrel)
+            let barrelLen = (config.marker === 'woodsball') ? 0.4 : 0.25;
+            const barrelGeo = new THREE.CylinderGeometry(0.015, 0.015, barrelLen, 8);
+            const barrel = new THREE.Mesh(barrelGeo, mats.markerParts);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.06, 0.2 + (barrelLen/2)); // Pra frente do corpo
+            pMarkerGroup.add(barrel);
+            
+            // Foregrip (Onde a mão esquerda segura)
+            const foregripGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.1);
+            const foregrip = new THREE.Mesh(foregripGeo, mats.gear);
+            foregrip.position.set(0, 0, 0.25);
+            pMarkerGroup.add(foregrip);
+            
+            pMarkerGroup.castShadow = true;
+        }
+
+        buildPlayer();
+
+        // --- EVENTOS UI E CORES ---
+        document.getElementById('toggle-panel-btn').addEventListener('click', () => {
+            document.getElementById('customizer-panel').classList.toggle('hidden');
+        });
+
+        const binds = ['mask', 'marker', 'pack', 'clothing', 'anim'];
+        binds.forEach(key => {
+            document.getElementById('sel-' + key).addEventListener('change', (e) => {
+                config[key] = e.target.value;
+                if(key !== 'anim') buildPlayer(); 
+            });
+        });
+
+        function setupColorPicker(inputId, material) {
+            document.getElementById(inputId).addEventListener('input', (e) => {
+                material.color.set(e.target.value);
+            });
+        }
+        
+        setupColorPicker('color-jersey', mats.jersey);
+        setupColorPicker('color-pants', mats.pants);
+        setupColorPicker('color-lens', mats.lens);
+        
+        // A cor do marcador também muda a cor do projétil!
+        document.getElementById('color-marker').addEventListener('input', (e) => {
+            mats.markerBody.color.set(e.target.value);
+            mats.paintball.color.set(e.target.value);
+        });
+
+
+        // --- MÁQUINA DE ESTADOS & ANIMAÇÃO PAINTBALL ---
+        let time = 0;
+        let lastShootTime = 0; // Controle de cadência de tiro
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            time += 0.04; // Dinâmico e rápido
+
+            let tBodyY = 0;
+            let tBodyRotX = 0;
+            let tBodyRotY = 0;
+            let tHandR = animated.baseHandR.clone();
+            // A mão esquerda sempre busca um ponto relativo à mão direita pra segurar o foregrip!
+            let tHandL = new THREE.Vector3(); 
+            let tFootL = animated.baseFootL.clone();
+            let tFootR = animated.baseFootR.clone();
+            
+            let wRotX = 0; // Mira do marcador (Cima/Baixo)
+            let wRotY = 0; // Mira (Esquerda/Direita)
+            let wRecoilZ = 0; // Recuo da arma ao atirar
+            let spd = 0;
+
+            // Lógica por Estado
+            switch(config.anim) {
+                case 'idle':
+                    // Respirando, marcador apontado pra frente/baixo, cobrindo o corpo
+                    tBodyY = Math.sin(time * 2) * 0.02; 
+                    tFootL.y -= tBodyY; tFootR.y -= tBodyY;
+                    
+                    tBodyRotY = -0.2; // Corpo de lado (perfil menor)
+                    tHandR.set(0.15, 1.0 + Math.sin(time*2)*0.01, 0.2); // Mão no grip colada no peito
+                    wRotX = 0.2; // Apontado um pouco pra baixo
+                    wRotY = 0.1;
+                    break;
+
+                case 'walk':
+                    // "Snap shooting walk" / Avanço Cauteloso
+                    spd = 6;
+                    tBodyY = Math.abs(Math.sin(time * spd)) * 0.03;
+                    tFootL.z += Math.sin(time * spd) * 0.25;
+                    tFootL.y += -tBodyY + Math.max(0, Math.cos(time * spd)) * 0.15;
+                    tFootR.z += Math.sin(time * spd + Math.PI) * 0.25;
+                    tFootR.y += -tBodyY + Math.max(0, Math.cos(time * spd + Math.PI)) * 0.15;
+                    
+                    tBodyRotY = -0.3; // De lado
+                    tHandR.set(0.2, 1.1 + Math.sin(time*spd*2)*0.02, 0.2); // Marcador alto, pronto
+                    wRotX = 0; // Mira reta
+                    break;
+
+                case 'run':
+                    // Speedball break run (Corrida com o marcador em uma mão balançando ou no peito)
+                    spd = 12; // Muito rápido
+                    tBodyRotX = 0.4; // Inclinado pra frente pra ganhar velocidade
+                    tBodyY = -0.1 + Math.abs(Math.sin(time * spd)) * 0.08;
+                    tFootL.z += Math.sin(time * spd) * 0.5;
+                    tFootL.y += -tBodyY + Math.max(0, Math.cos(time * spd)) * 0.3;
+                    tFootR.z += Math.sin(time * spd + Math.PI) * 0.5;
+                    tFootR.y += -tBodyY + Math.max(0, Math.cos(time * spd + Math.PI)) * 0.3;
+                    
+                    tBodyRotY = 0; // De frente pra correr
+                    tHandR.set(0.2, 0.9, 0.1 + Math.sin(time*spd)*0.2); // Bombeando o braço com a arma
+                    wRotX = 0.5; // Aponta a arma pro chão pra correr livre
+                    break;
+
+                case 'jump':
+                    // Mergulho "Superman" clássico pra entrar no bunker
+                    spd = 5;
+                    tBodyY = Math.sin(time * spd) * 1.5 - 0.5; 
+                    if (Math.sin(time * spd) > 0) {
+                        tBodyRotX = 1.2; // Corpo deitado voando!
+                        tBodyRotY = 0;
+                        tHandR.set(0.2, 1.5, 0.8); // Estica a arma pra frente
+                        tFootL.set(-0.2, 0.5, -0.6); // Pernas voando pra trás
+                        tFootR.set(0.2, 0.5, -0.6);
+                        wRotX = 0;
+                    } else {
+                        // Deslizando no chão
+                        tBodyY = -0.8; 
+                        tBodyRotX = 1.5; // De bruços
+                        tFootL.set(-0.2, -0.6, -0.8);
+                        tFootR.set(0.2, -0.6, -0.8);
+                        tHandR.set(0.2, -0.5, 0.5); // Arma arrastando
+                        wRotX = -0.2;
+                    }
+                    break;
+
+                case 'crouch':
+                    // Ajoelhado atrás da barreira inflável
+                    tBodyY = -0.4;
+                    tBodyRotY = -0.4; // Bem de perfil pra não tomar tiro
+                    tBodyRotX = 0.1; 
+                    
+                    tFootL.set(-0.2, -tBodyY, 0.3); // Pé esquerdo firme na frente
+                    tFootR.set(0.2, -tBodyY, -0.3); // Joelho direito no chão
+                    tFootR.y += 0.3; 
+                    
+                    tHandR.set(0.2, 0.7, 0.2); // Arma compacta no ombro
+                    wRotX = 0;
+                    break;
+
+                case 'attack':
+                    // Ramping / Rajada (Atirando rápido!)
+                    tBodyY = -0.1; // Base firme
+                    tBodyRotY = -0.3;
+                    tFootL.z += 0.3; tFootL.y -= tBodyY;
+                    tFootR.z -= 0.3; tFootR.y -= tBodyY;
+
+                    tHandR.set(0.15, 1.1, 0.3); // Arma colada no rosto mirando
+                    wRotX = 0;
+
+                    // Recoil (A arma treme pra trás no Z)
+                    wRecoilZ = Math.sin(time * 40) * 0.03; // Vibração ultra rápida!
+
+                    // Sistema de Spawn de Paintballs
+                    if (time - lastShootTime > 0.15) { // Cadência alta (bps)
+                        lastShootTime = time;
+                        const pb = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), mats.paintball);
+                        // A bolinha nasce na ponta do cano (Offset Z aproximado baseado na rotação)
+                        pb.position.copy(animated.currentHandR);
+                        pb.position.y += 0.06; // Altura do cano
+                        pb.position.z += 0.5; // Pra frente
+                        
+                        // Vetor de direção
+                        pb.userData.velocity = new THREE.Vector3(0, 0, 0.8).applyEuler(new THREE.Euler(wRotX, wRotY, 0));
+                        pb.userData.life = 0;
+                        
+                        scene.add(pb);
+                        paintballs.push(pb);
+                    }
+                    break;
+            }
+
+            // A mão esquerda calcula onde tem que ficar baseada na arma na mão direita
+            // O foregrip fica em Z + 0.25 em relação ao grip
+            let offsetL = new THREE.Vector3(-0.02, 0, 0.25);
+            // Aplica a rotação da arma no offset
+            offsetL.applyEuler(new THREE.Euler(wRotX, wRotY + tBodyRotY, 0)); 
+            tHandL.copy(tHandR).add(offsetL);
+
+            // Suavização das transições (Lerp)
+            animated.currentBodyY = THREE.MathUtils.lerp(animated.currentBodyY, tBodyY, 0.15);
+            animated.currentBodyRotX = THREE.MathUtils.lerp(animated.currentBodyRotX, tBodyRotX, 0.15);
+            // RotY precisa suavizar também pra não virar instantâneo
+            pBodyGroup.rotation.y = THREE.MathUtils.lerp(pBodyGroup.rotation.y, tBodyRotY, 0.15);
+            
+            animated.currentHandL.lerp(tHandL, 0.2);
+            animated.currentHandR.lerp(tHandR, 0.2);
+            animated.currentFootL.lerp(tFootL, 0.3);
+            animated.currentFootR.lerp(tFootR, 0.3);
+
+            // -----------------------------------------------------------------
+            // APLICANDO VALORES AO CORPO
+            // -----------------------------------------------------------------
+            pbGroup.position.y = animated.currentBodyY;
+            pBodyGroup.rotation.x = animated.currentBodyRotX;
+            
+            let rotX = animated.currentBodyRotX;
+            let currentBodyRotY = pBodyGroup.rotation.y;
+
+            // Cabeça acompanha (sempre virada pra frente da arena)
+            let headY = 1.45 * Math.cos(rotX);
+            let headZ = 1.45 * Math.sin(rotX);
+            pHeadGroup.position.set(0, headY, headZ);
+            pHeadGroup.rotation.x = rotX * 0.5;
+            pHeadGroup.rotation.y = -currentBodyRotY; // Cancela a rotação do corpo pra olhar reto
+
+            // Ombros e Quadris recalculados
+            let sy = 1.45 * Math.cos(rotX);
+            let sz = 1.45 * Math.sin(rotX);
+            // Precisamos rodar os ombros em Y baseados no corpo!
+            let curShoulderL = new THREE.Vector3(-0.22, sy, sz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY); 
+            let curShoulderR = new THREE.Vector3(0.22, sy, sz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+
+            let hy = 0.9 * Math.cos(rotX);
+            let hz = 0.9 * Math.sin(rotX);
+            let curHipL = new THREE.Vector3(-0.15, hy, hz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+            let curHipR = new THREE.Vector3(0.15, hy, hz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+
+            // IK BRAÇOS
+            if (animated.leftArm && animated.rightArm) {
+                let elbowDirL = new THREE.Vector3(-1, -0.5, 0).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+                let elbowDirR = new THREE.Vector3(1, -0.5, 0).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+
+                const elbL = solveIK(curShoulderL, animated.currentHandL, PROPS.armUpperLen, PROPS.armLowerLen, elbowDirL);
+                orientLimb(animated.leftArm.up, curShoulderL, elbL); 
+                orientLimb(animated.leftArm.low, elbL, animated.currentHandL);
+
+                const elbR = solveIK(curShoulderR, animated.currentHandR, PROPS.armUpperLen, PROPS.armLowerLen, elbowDirR);
+                orientLimb(animated.rightArm.up, curShoulderR, elbR); 
+                orientLimb(animated.rightArm.low, elbR, animated.currentHandR);
+            }
+
+            // IK PERNAS
+            if (animated.leftLeg && animated.rightLeg) {
+                const kneeDir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+                
+                const kneeL = solveIK(curHipL, animated.currentFootL, PROPS.thighLen, PROPS.calfLen, kneeDir);
+                orientLimb(animated.leftLeg.up, curHipL, kneeL); 
+                orientLimb(animated.leftLeg.low, kneeL, animated.currentFootL);
+
+                const kneeR = solveIK(curHipR, animated.currentFootR, PROPS.thighLen, PROPS.calfLen, kneeDir);
+                orientLimb(animated.rightLeg.up, curHipR, kneeR); 
+                orientLimb(animated.rightLeg.low, kneeR, animated.currentFootR);
+            }
+
+            // Lógica do Marcador (Arma)
+            pMarkerGroup.position.copy(animated.currentHandR);
+            pMarkerGroup.position.z -= wRecoilZ; // Efeito de recuo no tiro
+            
+            pMarkerGroup.rotation.x = THREE.MathUtils.lerp(pMarkerGroup.rotation.x, wRotX, 0.2);
+            pMarkerGroup.rotation.y = currentBodyRotY + wRotY; // Acompanha a rotação do corpo
+
+            // Animação das Bolinhas Voando
+            for (let i = paintballs.length - 1; i >= 0; i--) {
+                let pb = paintballs[i];
+                pb.position.add(pb.userData.velocity); // Move rápido pra frente
+                pb.userData.velocity.y -= 0.01; // Gravidade leve na bolinha (Drop)
+                pb.userData.life++;
+
+                // Se bater no chão ou for muito longe, some
+                if (pb.position.y < 0 || pb.userData.life > 30) {
+                    scene.remove(pb);
+                    pb.geometry.dispose();
+                    paintballs.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

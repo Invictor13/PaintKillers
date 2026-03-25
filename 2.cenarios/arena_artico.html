@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operação Ártico 3D - Paintball Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #e2e8f0; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+        
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(15px);
+            padding: 24px; border-radius: 12px; border: 1px solid rgba(186, 230, 253, 0.3);
+            color: #f1f5f9; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            z-index: 100; width: 360px;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s;
+        }
+        #ui-panel.hidden { transform: translateX(-120%); opacity: 0; pointer-events: none; }
+        
+        #controls-help {
+            position: absolute; bottom: 20px; right: 20px;
+            background: rgba(15, 23, 42, 0.8); color: #7dd3fc; padding: 15px; border-radius: 8px;
+            font-size: 0.8rem; pointer-events: none; border: 1px solid rgba(186, 230, 253, 0.2);
+            transition: opacity 0.4s; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        #controls-help.hidden { opacity: 0; }
+
+        .btn {
+            width: 100%; padding: 14px; margin-bottom: 12px; border-radius: 6px;
+            font-weight: 900; text-transform: uppercase; letter-spacing: 2px;
+            cursor: pointer; transition: all 0.2s; border: none; font-size: 0.75rem;
+        }
+        .btn-winter { background: #0ea5e9; color: white; border-bottom: 4px solid #0369a1; }
+        .btn-winter:hover { background: #38bdf8; }
+        .btn-winter:active { transform: translateY(2px); border-bottom: 1px solid #0369a1; }
+        
+        .btn-outpost { background: #475569; color: white; border-bottom: 4px solid #1e293b; }
+        .btn-outpost:hover { background: #64748b; }
+        .btn-outpost:active { transform: translateY(2px); border-bottom: 1px solid #1e293b; }
+
+        #toggle-hud-btn {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(15, 23, 42, 0.8); color: #7dd3fc; border: 1px solid rgba(186, 230, 253, 0.4);
+            padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: bold;
+            z-index: 200; backdrop-filter: blur(5px); transition: all 0.2s; font-size: 0.7rem;
+        }
+        #toggle-hud-btn:hover { background: #0ea5e9; color: white; }
+        
+        .hud-select {
+            width: 100%; background: rgba(0, 0, 0, 0.6); color: #7dd3fc;
+            border: 1px solid rgba(186, 230, 253, 0.3); padding: 10px; border-radius: 4px;
+            margin-bottom: 12px; outline: none; font-size: 0.85rem;
+        }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin: 12px 0; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%;
+            background: #7dd3fc; cursor: pointer; margin-top: -7px; box-shadow: 0 0 15px rgba(125, 211, 252, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="toggle-hud-btn">SISTEMA: OCULTAR</button>
+
+    <div id="ui-panel">
+        <h1 class="text-3xl font-black text-sky-400 mb-1 italic tracking-tighter">ARCTIC TACTICAL</h1>
+        <p class="text-[10px] text-sky-200 opacity-60 mb-6 uppercase tracking-[0.3em]">Cenário de Inverno v3.0</p>
+        
+        <button id="btn-woodsball" class="btn btn-winter">Gerar Montanhas & Lago</button>
+        <button id="btn-speedball" class="btn btn-outpost">Gerar Bunker Ártico</button>
+        
+        <div class="mt-6 pt-6 border-t border-sky-900/50">
+            <h3 class="font-black text-xs text-sky-200 mb-4 uppercase tracking-widest flex items-center">
+                <span class="w-2 h-2 bg-sky-500 rounded-full mr-2 animate-pulse"></span>
+                Estação Meteorológica
+            </h3>
+            
+            <div class="flex justify-between text-[10px] text-sky-400 font-bold mb-1 uppercase">
+                <label>Ciclo Polar (Horário)</label>
+                <span id="time-display" class="font-mono bg-black px-2 py-0.5 rounded text-sky-400">12:00</span>
+            </div>
+            <input type="range" id="slider-time" min="0" max="24" step="0.1" value="12">
+
+            <label class="text-[10px] text-sky-400 font-bold mt-4 block mb-1 uppercase tracking-wider">Protocolo de Clima</label>
+            <select id="sel-weather" class="hud-select">
+                <option value="clear" selected>Dia Gelado (Limpo)</option>
+                <option value="cloudy">Céu de Chumbo (Nublado)</option>
+                <option value="wind">Vento Cortante</option>
+                <option value="fog">Neblina Polar Densa</option>
+                <option value="rain_light">Geada / Chuva Congelante</option>
+                <option value="storm">Nevasca Elétrica</option>
+                <option value="snow">WHITEOUT (Nevasca Total)</option>
+            </select>
+        </div>
+
+        <div class="mt-4 p-3 bg-black/40 rounded border border-sky-900/20">
+            <p class="text-[9px] text-gray-400 leading-relaxed uppercase">
+                O modo <b>Whiteout</b> simula ventos polares extremos e partículas de neve densa, afetando a visibilidade e a aerodinâmica das bandeiras.
+            </p>
+        </div>
+    </div>
+
+    <div id="controls-help">
+        <p>🖱️ <b>Orbit:</b> Clique Esq</p>
+        <p>🖱️ <b>Pan:</b> Clique Dir</p>
+        <p>⚙️ <b>Zoom:</b> Scroll</p>
+    </div>
+
+    <script>
+        // ==========================================
+        // ENGINE & CONFIGURAÇÕES ÁRTICAS
+        // ==========================================
+        const ARENA_LENGTH = 160;
+        const ARENA_WIDTH = 90;   
+        let mode = 'woodsball'; 
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2('#cbd5e1', 0.0035); 
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 3500);
+        camera.position.set(0, 100, 160);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.04;
+        controls.maxPolarAngle = Math.PI / 2.05; 
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xe0f2fe, 1.2);
+        sunLight.castShadow = true;
+        sunLight.shadow.camera.left = -160; sunLight.shadow.camera.right = 160;
+        sunLight.shadow.camera.top = 160; sunLight.shadow.camera.bottom = -160;
+        sunLight.shadow.mapSize.width = 4096; sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.bias = -0.0003;
+        scene.add(sunLight);
+
+        let spawnQueue = [];
+        let isSpawning = false;
+
+        function queueForSpawn(obj) {
+            obj.userData.targetScale = obj.scale.clone();
+            obj.scale.set(0.001, 0.001, 0.001);
+            obj.visible = false;
+            spawnQueue.push(obj);
+        }
+
+        // ==========================================
+        // SEED E TEXTURAS PROCEDURAIS (WINTER EDITION)
+        // ==========================================
+        let mapSeed = { offsetX: 0, offsetZ: 0, lakeOffset: 0, lakeCurve: 0.04, hillSize: 18 };
+
+        function randomizeMapSeed() {
+            mapSeed.offsetX = Math.random() * 5000;
+            mapSeed.offsetZ = Math.random() * 5000;
+            mapSeed.lakeOffset = (Math.random() - 0.5) * 60; 
+            mapSeed.lakeCurve = 0.015 + Math.random() * 0.04;
+            mapSeed.hillSize = 12 + Math.random() * 20; 
+        }
+
+        function createProceduralTexture(type, baseColor, noiseColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 512, 512);
+            ctx.fillStyle = noiseColor;
+            
+            const count = type === 'snow' ? 18000 : 9000;
+            for(let i=0; i<count; i++) {
+                const x = Math.random() * 512; const y = Math.random() * 512;
+                ctx.globalAlpha = Math.random() * 0.4;
+                if (type === 'snow') {
+                    ctx.fillRect(x, y, 2, 2);
+                } else if (type === 'bark') {
+                    ctx.globalAlpha = 0.2;
+                    ctx.fillRect(x, y, 1, 30);
+                } else if (type === 'metal') {
+                    ctx.globalAlpha = 0.15;
+                    ctx.fillRect(x, y, 4, 2);
+                }
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        }
+
+        const texSnow = createProceduralTexture('snow', '#f8fafc', '#e2e8f0');
+        const texBark = createProceduralTexture('bark', '#334155', '#1e293b');
+        const texMetal = createProceduralTexture('metal', '#64748b', '#475569');
+        const texNet = (function() {
+            const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+            const ctx = c.getContext('2d'); ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0,32); ctx.lineTo(64,32); ctx.moveTo(32,0); ctx.lineTo(32,64); ctx.stroke();
+            const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping; return t;
+        })();
+        texSnow.repeat.set(20, 20); texNet.repeat.set(80, 5);
+
+        const materials = {
+            snow: new THREE.MeshStandardMaterial({ map: texSnow, roughness: 1.0 }),
+            ice: new THREE.MeshStandardMaterial({ color: '#7dd3fc', transparent: true, opacity: 0.7, metalness: 0.4, roughness: 0.1 }),
+            bark: new THREE.MeshStandardMaterial({ map: texBark, roughness: 0.9 }),
+            pine: new THREE.MeshStandardMaterial({ color: '#064e3b', roughness: 0.8 }),
+            metal: new THREE.MeshStandardMaterial({ map: texMetal, roughness: 0.7, metalness: 0.3 }),
+            net: new THREE.MeshStandardMaterial({ map: texNet, transparent: true, opacity: 0.6, side: THREE.DoubleSide }),
+            mountain: new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 1.0, flatShading: true }),
+            cloud: new THREE.MeshLambertMaterial({ color: '#f8fafc', transparent: true, opacity: 0.6 }),
+            teamRed: new THREE.MeshStandardMaterial({ color: '#ef4444', roughness: 0.5 }),
+            teamBlue: new THREE.MeshStandardMaterial({ color: '#3b82f6', roughness: 0.5 }),
+            flagPole: new THREE.MeshStandardMaterial({ color: '#94a3b8', metalness: 0.6 }),
+            paintRed: new THREE.MeshStandardMaterial({ color: '#ff0044', transparent: true, opacity: 0.85 }),
+            paintBlue: new THREE.MeshStandardMaterial({ color: '#00ccff', transparent: true, opacity: 0.85 })
+        };
+
+        const arenaGroup = new THREE.Group();
+        const backgroundGroup = new THREE.Group();
+        scene.add(arenaGroup, backgroundGroup);
+        
+        let groundMesh, waterMesh;
+        const animatedObjects = { pines: [], flags: [], clouds: [], growing: [], growingTerrain: null };
+        let worldState = { windSpeed: 1.0, snowIntensity: 0, isStorm: false, lightningFlash: 0 };
+        
+        let snowParticles;
+        const particleCount = 7000;
+        
+        function buildWeatherSystems() {
+            const sGeo = new THREE.BufferGeometry(); const sPos = new Float32Array(particleCount * 3);
+            for(let i=0; i<particleCount*3; i+=3) { sPos[i] = (Math.random()-0.5)*600; sPos[i+1] = Math.random()*200; sPos[i+2] = (Math.random()-0.5)*600; }
+            sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+            snowParticles = new THREE.Points(sGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.8 }));
+            snowParticles.visible = false; scene.add(snowParticles);
+        }
+        buildWeatherSystems();
+
+        // ==========================================
+        // MATEMÁTICA DO RELEVO (ARCTIC SYNC)
+        // ==========================================
+        function getTerrainHeight(x, z) {
+            let baseExt = 0;
+            if (Math.abs(x) > ARENA_LENGTH/2 || Math.abs(z) > ARENA_WIDTH/2) {
+                let dist = Math.sqrt(x*x + z*z);
+                baseExt = Math.max(0, (dist - 80) * 0.2);
+                let wave = Math.sin((x + mapSeed.offsetX) * 0.03) * Math.cos((z + mapSeed.offsetZ) * 0.03);
+                baseExt += (wave * wave) * 20; 
+            }
+
+            let lakeDepth = 0;
+            if (mode === 'woodsball') {
+                let pathX = (ARENA_LENGTH / 2 + 50 + mapSeed.lakeOffset) + Math.sin(z * mapSeed.lakeCurve) * 35;
+                let distToLake = Math.abs(x - pathX);
+                if (distToLake < 20) {
+                    let carve = Math.cos((distToLake / 20) * (Math.PI / 2)); 
+                    lakeDepth = carve * (baseExt + 6); 
+                }
+            }
+
+            if (mode === 'speedball') return baseExt - lakeDepth;
+
+            const distFromCenterX = Math.abs(x);
+            let edgeFlatten = 1;
+            if (distFromCenterX > ARENA_LENGTH/2 - 30) edgeFlatten = Math.max(0, (ARENA_LENGTH/2 - distFromCenterX) / 30);
+            
+            const distFromCenter = Math.sqrt(x*x + z*z);
+            let hill = 0;
+            if (distFromCenter < 50) hill = Math.cos((distFromCenter / 50) * (Math.PI/2)) * mapSeed.hillSize;
+            
+            let noise = Math.sin((x + mapSeed.offsetX) * 0.045) * Math.cos((z + mapSeed.offsetZ) * 0.045) * 7;
+            noise += Math.sin((x + mapSeed.offsetX) * 0.15 + (z + mapSeed.offsetZ) * 0.1) * 3.5;
+
+            return ((noise + hill) * edgeFlatten) + baseExt - lakeDepth;
+        }
+
+        // ==========================================
+        // CONSTRUTORES DE OBJETOS
+        // ==========================================
+        function buildSkyBox() {
+            const mGeo = new THREE.ConeGeometry(90, 180, 5); mGeo.translate(0, 90, 0);
+            for(let i=0; i<15; i++) {
+                const angle = (i / 15) * Math.PI * 2 + Math.random();
+                const radius = 380 + Math.random() * 150;
+                const m = new THREE.Mesh(mGeo, materials.mountain);
+                m.position.set(Math.cos(angle)*radius, -30, Math.sin(angle)*radius);
+                m.scale.set(1.4+Math.random(), 0.6+Math.random()*2, 1.4+Math.random());
+                backgroundGroup.add(m); queueForSpawn(m);
+            }
+            for(let i=0; i<30; i++) {
+                const cloud = new THREE.Group();
+                for(let j=0; j<4; j++) {
+                    const p = new THREE.Mesh(new THREE.IcosahedronGeometry(14, 0), materials.cloud);
+                    p.position.set((Math.random()-0.5)*25, (Math.random()-0.5)*12, (Math.random()-0.5)*25);
+                    p.scale.set(1.2+Math.random(), 0.6+Math.random(), 1.2+Math.random());
+                    cloud.add(p);
+                }
+                cloud.position.set((Math.random()-0.5)*800, 130 + Math.random()*60, (Math.random()-0.5)*800);
+                cloud.userData.speed = 0.03 + Math.random()*0.05;
+                backgroundGroup.add(cloud); animatedObjects.clouds.push(cloud);
+            }
+        }
+
+        function buildPerimeter() {
+            const wallH = 1.8, netH = 8;
+            function seg(l, x, z, ry) {
+                const s = new THREE.Group();
+                const b = new THREE.Mesh(new THREE.BoxGeometry(l, wallH, 1.6).translate(0, wallH/2, 0), materials.metal);
+                b.castShadow = true; s.add(b);
+                s.add(new THREE.Mesh(new THREE.PlaneGeometry(l, netH).translate(0, wallH+netH/2, 0), materials.net));
+                const nPoles = Math.floor(l / 12);
+                for(let i=0; i<=nPoles; i++) {
+                    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, netH).translate(0, wallH+netH/2, 0), materials.flagPole);
+                    p.position.x = -l/2 + (i * (l/nPoles)); s.add(p);
+                }
+                s.position.set(x, 0, z); s.rotation.y = ry; arenaGroup.add(s); queueForSpawn(s);
+            }
+            seg(ARENA_LENGTH, 0, -ARENA_WIDTH/2, 0); seg(ARENA_LENGTH, 0, ARENA_WIDTH/2, 0);
+            seg(ARENA_WIDTH, -ARENA_LENGTH/2, 0, Math.PI/2); seg(ARENA_WIDTH, ARENA_LENGTH/2, 0, Math.PI/2);
+        }
+
+        function createPineTree(x, z, isBg = false) {
+            const y = getTerrainHeight(x, z);
+            if (y < -1.5) return;
+            const tree = new THREE.Group();
+            const trunkH = 5 + Math.random()*4;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, trunkH, 8).translate(0, trunkH/2, 0), materials.bark);
+            trunk.castShadow = !isBg; tree.add(trunk);
+            
+            const layers = 3 + Math.floor(Math.random()*3);
+            for(let i=0; i<layers; i++) {
+                const layer = new THREE.Mesh(new THREE.ConeGeometry(2.5 - (i*0.4), 3, 8).translate(0, 1.5, 0), materials.pine);
+                layer.position.y = (trunkH * 0.4) + (i * 1.5);
+                layer.castShadow = !isBg;
+                tree.add(layer);
+                if(!isBg) {
+                    layer.userData.baseRotZ = 0; layer.userData.offset = Math.random()*Math.PI;
+                    animatedObjects.pines.push(layer);
+                }
+            }
+            tree.position.set(x, y - 0.5, z);
+            if(isBg) backgroundGroup.add(tree); else arenaGroup.add(tree);
+            queueForSpawn(tree);
+        }
+
+        function createBunker(x, z, ry) {
+            const y = getTerrainHeight(x, z);
+            const b = new THREE.Group();
+            const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 1.5).translate(0, 2.5, 0), materials.metal);
+            wall.castShadow = true; b.add(wall);
+            if(Math.random() > 0.4) {
+                const side = new THREE.Mesh(new THREE.BoxGeometry(1.5, 4, 6).translate(0, 2, 3), materials.metal);
+                side.position.x = 3.25; b.add(side);
+            }
+            b.position.set(x, y - 1, z); b.rotation.y = ry;
+            arenaGroup.add(b); queueForSpawn(b);
+        }
+
+        function createFlag(x, z, color) {
+            const f = new THREE.Group();
+            f.add(new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.5, 4.5).translate(0, 0.75, 0), materials.metal));
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 10).translate(0, 5, 0), materials.flagPole);
+            pole.position.y = 1.5; f.add(pole);
+            const fGeo = new THREE.PlaneGeometry(2.5, 1.5, 6, 3); fGeo.translate(1.25, -0.75, 0);
+            const fl = new THREE.Mesh(fGeo, new THREE.MeshStandardMaterial({ color: color, side: 2 }));
+            fl.position.set(0, 10, 0); fl.userData.baseZ = []; 
+            const att = fGeo.attributes.position; for(let i=0; i<att.count; i++) fl.userData.baseZ.push(att.getZ(i));
+            fl.userData.offset = x; animatedObjects.flags.push(fl);
+            f.add(fl); f.position.set(x, getTerrainHeight(x, z) - 0.5, z);
+            arenaGroup.add(f); queueForSpawn(f);
+        }
+
+        function createDummy(x, z, mat) {
+            const h = 1.8;
+            const d = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, h, 8).translate(0, h/2, 0), mat);
+            d.position.set(x, getTerrainHeight(x, z) - 0.1, z); d.castShadow = true;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), new THREE.MeshStandardMaterial({color: 0x111111}));
+            head.position.y = h + 0.15; d.add(head); arenaGroup.add(d); queueForSpawn(d);
+        }
+
+        function buildMainTerrain() {
+            const segs = 140;
+            const geo = new THREE.PlaneGeometry(ARENA_LENGTH*4, ARENA_WIDTH*4, segs, segs);
+            const pos = geo.attributes.position;
+            for(let i=0; i<pos.count; i++) pos.setZ(i, getTerrainHeight(pos.getX(i), -pos.getY(i)));
+            geo.computeVertexNormals();
+            groundMesh = new THREE.Mesh(geo, materials.snow);
+            groundMesh.rotation.x = -Math.PI/2; groundMesh.receiveShadow = true;
+            groundMesh.scale.set(1, 0.001, 1); arenaGroup.add(groundMesh);
+            animatedObjects.growingTerrain = groundMesh;
+
+            if (mode === 'woodsball') {
+                const wGeo = new THREE.PlaneGeometry(ARENA_LENGTH*4, ARENA_WIDTH*4, 32, 32);
+                waterMesh = new THREE.Mesh(wGeo, materials.ice);
+                waterMesh.rotation.x = -Math.PI/2; waterMesh.position.y = -2.5;
+                const wPos = wGeo.attributes.position; waterMesh.userData.baseZ = [];
+                for(let i=0; i<wPos.count; i++) waterMesh.userData.baseZ.push(wPos.getZ(i));
+                waterMesh.scale.set(1, 0.001, 1); arenaGroup.add(waterMesh);
+            }
+
+            for(let i=0; i<700; i++) {
+                const ang = Math.random()*Math.PI*2, rad = 100 + Math.random()*180;
+                createPineTree(Math.cos(ang)*rad, Math.sin(ang)*rad, true);
+            }
+        }
+
+        function generateLayout() {
+            spawnQueue = []; isSpawning = false;
+            animatedObjects.pines = []; animatedObjects.flags = []; animatedObjects.growing = [];
+            animatedObjects.clouds = [];
+            while(arenaGroup.children.length > 0) arenaGroup.remove(arenaGroup.children[0]);
+            while(backgroundGroup.children.length > 0) backgroundGroup.remove(backgroundGroup.children[0]);
+            
+            randomizeMapSeed();
+            buildSkyBox();
+            buildMainTerrain();
+            buildPerimeter();
+
+            createFlag(-ARENA_LENGTH/2 + 20, 0, '#ef4444'); createFlag(ARENA_LENGTH/2 - 20, 0, '#3b82f6');
+
+            for(let i=-2; i<=2; i++) {
+                createDummy(-ARENA_LENGTH/2 + 28, i*6, materials.teamRed);
+                createDummy(ARENA_LENGTH/2 - 28, i*6, materials.teamBlue);
+            }
+
+            if(mode === 'woodsball') {
+                for(let i=0; i<100; i++) {
+                    const x = (Math.random()-0.5)*140, z = (Math.random()-0.5)*80;
+                    if(Math.abs(x) > 45 || Math.abs(z) > 20) createPineTree(x, z);
+                }
+                for(let i=0; i<18; i++) createBunker((Math.random()-0.5)*120, (Math.random()-0.5)*75, Math.random()*Math.PI);
+            } else {
+                for(let i=0; i<35; i++) {
+                    const x = 20 + Math.random()*50, z = (Math.random()-0.5)*75, r = Math.random()*Math.PI;
+                    createBunker(x, z, r); createBunker(-x, -z, r);
+                }
+            }
+
+            spawnQueue.sort((a,b) => a.position.lengthSq() - b.position.lengthSq());
+            isSpawning = true;
+        }
+
+        // ==========================================
+        // ATMOSFERA PRO (WINTER CYCLE)
+        // ==========================================
+        const atmoKeys = [
+            { t: 0, sky: '#020617', sun: '#1e3a8a', amb: '#020617', sunInt: 0.1, ambInt: 0.05 },
+            { t: 8, sky: '#64748b', sun: '#94a3b8', amb: '#1e293b', sunInt: 0.5, ambInt: 0.2 },
+            { t: 12, sky: '#f8fafc', sun: '#ffffff', amb: '#f1f5f9', sunInt: 1.2, ambInt: 0.6 },
+            { t: 16, sky: '#64748b', sun: '#94a3b8', amb: '#1e293b', sunInt: 0.5, ambInt: 0.2 },
+            { t: 24, sky: '#020617', sun: '#1e3a8a', amb: '#020617', sunInt: 0.1, ambInt: 0.05 }
+        ];
+
+        function updateAtmo() {
+            const time = parseFloat(document.getElementById('slider-time').value);
+            const weather = document.getElementById('sel-weather').value;
+            const h = Math.floor(time), m = Math.floor((time-h)*60);
+            document.getElementById('time-display').innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+
+            let c = atmoKeys[0], n = atmoKeys[1];
+            for(let i=0; i<atmoKeys.length-1; i++) if(time >= atmoKeys[i].t && time <= atmoKeys[i+1].t) { c = atmoKeys[i]; n = atmoKeys[i+1]; break; }
+            const f = (time - c.t) / (n.t - c.t);
+            const skyCol = new THREE.Color(c.sky).lerp(new THREE.Color(n.sky), f);
+            const sunCol = new THREE.Color(c.sun).lerp(new THREE.Color(n.sun), f);
+            const ambCol = new THREE.Color(c.amb).lerp(new THREE.Color(n.amb), f);
+            let sInt = c.sunInt + (n.sunInt - c.sunInt)*f;
+            let aInt = c.ambInt + (n.ambInt - c.ambInt)*f;
+
+            const sunAng = ((time - 9) / 6) * Math.PI, rad = 250;
+            sunLight.position.set(Math.cos(sunAng)*rad, Math.max(-10, Math.sin(sunAng)*rad), 40);
+
+            worldState.windSpeed = 1.0; worldState.snowIntensity = 0; worldState.isStorm = false;
+            let fogD = 0.0035;
+
+            if(weather === 'clear') { fogD = 0.002; }
+            else if(weather === 'cloudy') { skyCol.lerp(new THREE.Color('#475569'), 0.6); sInt *= 0.3; fogD = 0.007; }
+            else if(weather === 'wind') { worldState.windSpeed = 6.5; fogD = 0.005; }
+            else if(weather === 'fog') { skyCol.lerp(new THREE.Color('#94a3b8'), 0.8); sInt *= 0.1; fogD = 0.05; worldState.windSpeed = 0.2; }
+            else if(weather === 'rain_light') { skyCol.lerp(new THREE.Color('#475569'), 0.7); worldState.snowIntensity = 1; fogD = 0.012; }
+            else if(weather === 'storm') { skyCol.set('#1e293b'); sInt = 0; worldState.snowIntensity = 4; worldState.isStorm = true; worldState.windSpeed = 8; fogD = 0.025; }
+            else if(weather === 'snow') { skyCol.set('#f1f5f9'); aInt *= 2.0; sInt *= 0.05; worldState.snowIntensity = 8; fogD = 0.05; worldState.windSpeed = 15; }
+
+            scene.background = skyCol; scene.fog.color = skyCol; scene.fog.density = fogD;
+            sunLight.color = sunCol; sunLight.intensity = sInt; ambientLight.color = ambCol; ambientLight.intensity = aInt;
+            worldState.baseAmbInt = aInt; worldState.baseAmbCol = ambCol.clone();
+            snowParticles.visible = worldState.snowIntensity > 0;
+        }
+
+        document.getElementById('btn-woodsball').addEventListener('click', () => { mode = 'woodsball'; generateLayout(); });
+        document.getElementById('btn-speedball').addEventListener('click', () => { mode = 'speedball'; generateLayout(); });
+        document.getElementById('slider-time').addEventListener('input', updateAtmo);
+        document.getElementById('sel-weather').addEventListener('change', updateAtmo);
+        document.getElementById('toggle-hud-btn').addEventListener('click', (e) => {
+            document.getElementById('ui-panel').classList.toggle('hidden');
+            document.getElementById('controls-help').classList.toggle('hidden');
+            e.target.innerText = e.target.innerText.includes('OCULTAR') ? 'SISTEMA: MOSTRAR' : 'SISTEMA: OCULTAR';
+        });
+
+        generateLayout(); updateAtmo();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            const time = Date.now() * 0.002;
+            const wind = worldState.windSpeed;
+
+            if(animatedObjects.growingTerrain) {
+                animatedObjects.growingTerrain.scale.y += (1 - animatedObjects.growingTerrain.scale.y) * 0.08;
+                if(waterMesh) waterMesh.scale.y += (1 - waterMesh.scale.y) * 0.08;
+                if(animatedObjects.growingTerrain.scale.y > 0.99) { animatedObjects.growingTerrain.scale.y = 1; animatedObjects.growingTerrain = null; }
+            }
+
+            if(isSpawning && !animatedObjects.growingTerrain) {
+                let pop = Math.ceil(spawnQueue.length / 25);
+                while(pop > 0 && spawnQueue.length > 0) { let o = spawnQueue.shift(); o.visible = true; animatedObjects.growing.push(o); pop--; }
+                if(spawnQueue.length === 0) isSpawning = false;
+            }
+
+            for(let i=animatedObjects.growing.length-1; i>=0; i--) {
+                let o = animatedObjects.growing[i]; o.scale.lerp(o.userData.targetScale, 0.15);
+                if(o.scale.distanceTo(o.userData.targetScale) < 0.01) { o.scale.copy(o.userData.targetScale); animatedObjects.growing.splice(i, 1); }
+            }
+
+            animatedObjects.pines.forEach(layer => {
+                layer.rotation.z = Math.sin(time * wind * 0.5 + layer.userData.offset) * (0.04 * Math.min(wind, 5));
+            });
+
+            animatedObjects.flags.forEach(f => {
+                const pos = f.geometry.attributes.position;
+                for(let i=0; i<pos.count; i++) {
+                    const vx = pos.getX(i);
+                    const wave = Math.sin(time*5*wind + vx*2.5 + f.userData.offset) * 0.18 * (vx/2);
+                    pos.setZ(i, f.userData.baseZ[i] + wave);
+                }
+                pos.needsUpdate = true;
+            });
+
+            animatedObjects.clouds.forEach(c => { c.position.x -= c.userData.speed * wind; if(c.position.x < -400) c.position.x = 400; });
+
+            if(worldState.snowIntensity > 0) {
+                const pos = snowParticles.geometry.attributes.position.array;
+                for(let i=1; i<particleCount*3; i+=3) {
+                    pos[i] -= 1.0; pos[i-1] -= 1.5 * wind;
+                    if(pos[i] < 0 || pos[i-1] < -300) { pos[i] = 180 + Math.random()*20; pos[i-1] = 300; }
+                }
+                snowParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            if(worldState.isStorm && Math.random() < 0.004) {
+                worldState.lightningFlash = 5 + Math.floor(Math.random()*10);
+                ambientLight.intensity = 3.0;
+            }
+            if(worldState.lightningFlash > 0) {
+                worldState.lightningFlash--;
+                if(worldState.lightningFlash <= 0) ambientLight.intensity = worldState.baseAmbInt;
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    </script>
+</body>
+</html>

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTT Paintball - Floresta Aberta</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #5eb1ff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; user-select: none; }
+        canvas { display: block; }
+
+        /* UI Overlays */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        
+        /* Mira (Crosshair) Centralizada */
+        #center-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
+        #crosshair { width: 4px; height: 4px; background-color: rgba(255, 255, 255, 0.9); border-radius: 50%; position: relative; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
+        .ch-line { position: absolute; background-color: rgba(255, 255, 255, 0.8); box-shadow: 0 0 2px rgba(0,0,0,0.8); }
+        .ch-top { width: 2px; height: 8px; top: -14px; left: 1px; }
+        .ch-bot { width: 2px; height: 8px; bottom: -14px; left: 1px; }
+        .ch-left { width: 8px; height: 2px; top: 1px; left: -14px; }
+        .ch-right { width: 8px; height: 2px; top: 1px; right: -14px; }
+
+        /* Marcador de Acerto (Hit Marker) */
+        #hit-marker { position: absolute; width: 32px; height: 32px; opacity: 0; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M10 10 L40 40 M90 10 L60 40 M10 90 L40 60 M90 90 L60 60' stroke='white' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E"); background-size: cover; }
+        #hit-marker.active { opacity: 1; transform: scale(1.3); transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #hit-marker.headshot { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M10 10 L40 40 M90 10 L60 40 M10 90 L40 60 M90 90 L60 60' stroke='red' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E"); }
+
+        /* HUD Cantos */
+        #hud-top { padding: 25px; text-align: center; }
+        #score-display { font-size: 2.8rem; font-weight: 900; color: #fbbf24; text-shadow: 2px 3px 0px #000; letter-spacing: 2px; margin: 0;}
+        
+        #hud-bottom-right { position: absolute; bottom: 30px; right: 30px; text-align: right; }
+        .ammo { font-size: 4rem; font-weight: 900; color: #10b981; line-height: 0.9; text-shadow: 3px 3px 0 #000; }
+        .ammo-label { font-size: 1.1rem; color: #fff; text-shadow: 1px 1px 0 #000; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;}
+        
+        #hud-bottom-left { position: absolute; bottom: 30px; left: 30px; font-weight: bold; color: #fff; background: rgba(0,0,0,0.6); padding: 15px 20px; border-radius: 8px; border: 1px solid #444; text-shadow: 1px 1px 0 #000; backdrop-filter: blur(5px);}
+        .key-hint { color: #fbbf24; background: #222; padding: 3px 8px; border-radius: 4px; margin-right: 5px; border: 1px solid #666; font-family: monospace;}
+
+        /* Menu Inicial Bloqueador */
+        #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; z-index: 50; backdrop-filter: blur(8px);}
+        .menu-box { text-align: center; background: rgba(30, 41, 59, 0.95); padding: 40px; border-radius: 12px; border: 2px solid #10b981; box-shadow: 0 15px 50px rgba(0,0,0,0.6); max-width: 480px; }
+        .menu-box h1 { color: #10b981; margin-top: 0; text-transform: uppercase; letter-spacing: 3px; font-size: 2.2rem; text-shadow: 0 0 10px rgba(16, 185, 129, 0.4);}
+        
+        /* Personalização Rápida no Menu */
+        .control-group { display: flex; justify-content: space-between; align-items: center; margin: 25px 0; text-align: left; padding: 12px; background: rgba(0,0,0,0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);}
+        .control-group label { font-size: 0.95rem; color: #e2e8f0; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;}
+        input[type="color"] { border: none; width: 50px; height: 50px; cursor: pointer; background: none; padding: 0; border-radius: 6px; }
+        
+        .btn-start { background: #10b981; color: white; border: none; padding: 16px 35px; font-size: 1.3rem; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; border-radius: 6px; margin-top: 15px; transition: 0.1s; box-shadow: 0 5px 0 #047857;}
+        .btn-start:hover { background: #34d399; transform: translateY(-2px); box-shadow: 0 7px 0 #047857; }
+        .btn-start:active { transform: translateY(4px); box-shadow: 0 1px 0 #047857; }
+    </style>
+</head>
+<body>
+
+    <!-- Overlay do Menu Bloqueador -->
+    <div id="blocker">
+        <div id="start-menu" class="menu-box">
+            <h1>Floresta Tática</h1>
+            <p style="color: #cbd5e1; line-height: 1.7; margin-bottom: 20px; font-size: 1.1rem;">
+                Ambiente Aberto Recarregado.<br><br>
+                <span class="key-hint">W A S D</span> Movimentar-se<br>
+                <span class="key-hint">ESPAÇO</span> Pular<br>
+                <span class="key-hint">MOUSE</span> Mirar e Atirar<br>
+                <span class="key-hint">V</span> Modo 3ª Pessoa (TPS)<br>
+            </p>
+            
+            <div class="control-group">
+                <label>Cor da Tinta (Arma):</label>
+                <input type="color" id="c-marker" value="#ff007f">
+            </div>
+
+            <button class="btn-start" id="btn-enter">Entrar na Arena</button>
+        </div>
+    </div>
+
+    <!-- Interface In-Game -->
+    <div id="ui-layer">
+        <div id="hud-top"><p id="score-display">PONTUAÇÃO: 0</p></div>
+        <div id="center-ui">
+            <div id="crosshair">
+                <div class="ch-line ch-top"></div><div class="ch-line ch-bot"></div>
+                <div class="ch-line ch-left"></div><div class="ch-line ch-right"></div>
+            </div>
+            <div id="hit-marker"></div>
+        </div>
+        <div id="hud-bottom-left"><span class="key-hint">V</span> Modo: <span id="cam-mode" style="color:#10b981;">1ª Pessoa (FPS)</span></div>
+        <div id="hud-bottom-right"><div class="ammo">ON</div><div class="ammo-label">Hopper Cheio</div></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. SETUP DO AMBIENTE (CÉU, LUZ E NÉVOA)
+        // ==========================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#5eb1ff'); // Céu de floresta à tarde
+        scene.fog = new THREE.FogExp2('#5eb1ff', 0.012); // Névoa volumétrica para esconder o horizonte
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Sombras suaves na floresta
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.body.appendChild(renderer.domElement);
+
+        // Iluminação (Ambiente rico + Sol forte direcional)
+        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5); 
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfff4e5, 1.4); // Luz do sol ligeiramente alaranjada
+        sunLight.position.set(50, 100, 30);
+        sunLight.castShadow = true;
+        // Expande o alcance da sombra para pegar todo o campo aberto
+        sunLight.shadow.camera.left = -60; sunLight.shadow.camera.right = 60;
+        sunLight.shadow.camera.top = 60; sunLight.shadow.camera.bottom = -60;
+        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // ==========================================
+        // 2. SISTEMA DE CONTROLE FPS (Yaw / Pitch)
+        // ==========================================
+        let isLocked = false;
+        let isTPS = false; // Começamos no FPS raiz
+        
+        // Controladores separados evitam a famosa "Gimbal Lock"
+        const yawObject = new THREE.Group(); 
+        const pitchObject = new THREE.Group();
+        yawObject.position.set(0, 1.6, 10); // Spawn point
+        scene.add(yawObject);
+        yawObject.add(pitchObject);
+        pitchObject.add(camera);
+
+        document.getElementById('btn-enter').addEventListener('click', () => {
+            document.body.requestPointerLock();
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            isLocked = document.pointerLockElement === document.body;
+            document.getElementById('blocker').style.display = isLocked ? 'none' : 'flex';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isLocked) return;
+            const sensitivity = 0.002;
+            yawObject.rotation.y -= e.movementX * sensitivity;
+            pitchObject.rotation.x -= e.movementY * sensitivity;
+            // Limita o olhar para cima/baixo (não quebrar o pescoço)
+            pitchObject.rotation.x = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, pitchObject.rotation.x));
+        });
+
+        // ==========================================
+        // 3. MATERIAIS, TEXTURAS E SPLATTERS (TINTAS)
+        // ==========================================
+        // Tinta espirrando gerada proceduralmente (Splatters)
+        const splatterTex = (function(){
+            const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+            const cx = c.getContext('2d');
+            cx.fillStyle = '#ffffff'; // Branco puro para podermos tingir com a cor do material
+            // Gota principal
+            cx.beginPath(); cx.arc(64, 64, 25, 0, Math.PI*2); cx.fill();
+            // Respingos aleatórios
+            for(let i=0; i<15; i++) {
+                const a = Math.random() * Math.PI*2;
+                const d = 25 + Math.random()*25;
+                const s = 3 + Math.random()*8;
+                cx.beginPath(); cx.arc(64 + Math.cos(a)*d, 64 + Math.sin(a)*d, s, 0, Math.PI*2); cx.fill();
+            }
+            return new THREE.CanvasTexture(c);
+        })();
+
+        // Textura do alvo procedural (Bullseye)
+        const targetTex = (function(){
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+            const cx = c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,256,256);
+            [ {r: 120, c: '#dc2626'}, {r: 100, c: '#fff'}, {r: 80, c: '#dc2626'}, {r: 60, c: '#fff'}, {r: 40, c: '#dc2626'}, {r: 20, c: '#111'} ].forEach(ring => {
+                cx.beginPath(); cx.arc(128, 128, ring.r, 0, Math.PI*2); cx.fillStyle = ring.c; cx.fill();
+            });
+            return new THREE.CanvasTexture(c);
+        })();
+
+        const mats = {
+            grass: new THREE.MeshStandardMaterial({ color: '#4ade80', roughness: 1.0 }), // Grama vibrante
+            wood: new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.9 }),
+            leaves: new THREE.MeshStandardMaterial({ color: '#2d5a27', roughness: 0.8 }), // Pinheiros escuros
+            glass: new THREE.MeshStandardMaterial({ color: '#a5f3fc', transparent: true, opacity: 0.5, roughness: 0.1 }),
+            target: new THREE.MeshStandardMaterial({ map: targetTex, roughness: 0.5 }),
+            dummySkin: new THREE.MeshStandardMaterial({ color: '#fca5a5' }),
+            dummyShirt: new THREE.MeshStandardMaterial({ color: '#1e3a8a' }),
+            dummyPants: new THREE.MeshStandardMaterial({ color: '#111827' }),
+            markerBody: new THREE.MeshStandardMaterial({ color: '#ff007f', metalness: 0.6, roughness: 0.3 }),
+            markerParts: new THREE.MeshStandardMaterial({ color: '#111111' }),
+            paintball: new THREE.MeshBasicMaterial({ color: '#ff007f' })
+        };
+
+        const shootables = []; // Tudo que pode levar tiro no cenário
+
+        // ==========================================
+        // 4. CONSTRUÇÃO DA FLORESTA ABERTA
+        // ==========================================
+        // O chão do mundo (gigante)
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(250, 250), mats.grass);
+        floor.rotation.x = -Math.PI/2; 
+        floor.receiveShadow = true;
+        scene.add(floor); 
+        shootables.push(floor); // Dá pra atirar no chão
+
+        // Construtor de Árvore Low Poly (Pinheiro Estiloso)
+        function spawnPineTree(x, z, scale) {
+            const treeGrp = new THREE.Group();
+            
+            // Tronco
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 3), mats.wood);
+            trunk.position.y = 1.5; trunk.castShadow = true; trunk.receiveShadow = true;
+            
+            // Camadas das folhas (3 Cones para parecer um pinheiro)
+            const l1 = new THREE.Mesh(new THREE.ConeGeometry(2.0, 4, 6), mats.leaves);
+            l1.position.y = 4; l1.castShadow = true; l1.receiveShadow = true;
+            
+            const l2 = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3.5, 6), mats.leaves);
+            l2.position.y = 6; l2.castShadow = true; l2.receiveShadow = true;
+            
+            const l3 = new THREE.Mesh(new THREE.ConeGeometry(1.1, 3, 6), mats.leaves);
+            l3.position.y = 8; l3.castShadow = true; l3.receiveShadow = true;
+            
+            treeGrp.add(trunk, l1, l2, l3);
+            treeGrp.position.set(x, 0, z);
+            treeGrp.scale.setScalar(scale); // Árvores com tamanhos variados
+            
+            scene.add(treeGrp);
+            // Tudo da árvore recebe tiro e tinta
+            shootables.push(trunk, l1, l2, l3); 
+        }
+
+        // Criar uma borda de floresta densa (Muro invisível disfarçado de natureza)
+        for(let i=0; i<120; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 35 + Math.random() * 60; // Mantém o centro livre (raio 35m)
+            const scale = 0.7 + Math.random() * 0.8;
+            spawnPineTree(Math.cos(angle)*radius, Math.sin(angle)*radius, scale);
+        }
+
+        // ==========================================
+        // 5. ZONAS DE TREINAMENTO DENTRO DO CAMPO
+        // ==========================================
+        // ZONA 1: Alvos de Precisão (A direita)
+        function spawnTargetStand(x, z, size, pts) {
+            const stand = new THREE.Group();
+            
+            // Pernas de madeira
+            const legGeo = new THREE.BoxGeometry(0.2, 3, 0.2);
+            const legL = new THREE.Mesh(legGeo, mats.wood); legL.position.set(-0.6, 1.5, 0); legL.castShadow = true;
+            const legR = new THREE.Mesh(legGeo, mats.wood); legR.position.set(0.6, 1.5, 0); legR.castShadow = true;
+            
+            // O disco alvo
+            const board = new THREE.Mesh(new THREE.CylinderGeometry(size/2, size/2, 0.1, 32), mats.target);
+            board.rotation.x = Math.PI/2; 
+            board.position.set(0, 3, 0.06); 
+            board.castShadow = true;
+            
+            // Dados pro jogo saber que é um alvo oficial
+            board.userData = { isTarget: true, score: pts };
+            
+            stand.add(legL, legR, board); 
+            shootables.push(legL, legR, board); // Madeira também pinta
+            
+            stand.position.set(x, 0, z); 
+            // Rotacionar ligeiramente pro centro (onde o player spawna)
+            stand.lookAt(0, 0, 0);
+            scene.add(stand);
+        }
+        
+        spawnTargetStand(12, -20, 1.2, 50);  // Perto
+        spawnTargetStand(25, -35, 1.8, 100); // Médio
+        spawnTargetStand(15, -60, 2.5, 200); // Longe (Precisa compensar a queda)
+
+        // ZONA 2: Mesa com Garrafas de Vidro (Física!)
+        const table = new THREE.Mesh(new THREE.BoxGeometry(8, 1.2, 2).translate(0, 0.6, 0), mats.wood);
+        table.position.set(-15, 0, -15); table.castShadow = true; table.receiveShadow = true;
+        table.lookAt(0, 0, 0); // Vira pra gente
+        scene.add(table); shootables.push(table);
+
+        const bottles = [];
+        for(let i=0; i<6; i++) {
+            const b = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.6, 16).translate(0, 0.3, 0), mats.glass.clone());
+            // Distribui elas ao longo da mesa baseada na rotação
+            const offset = -3 + i*1.2;
+            b.position.copy(table.position);
+            b.position.y += 1.2; // Em cima da mesa
+            b.position.x += Math.cos(table.rotation.y)*offset;
+            b.position.z -= Math.sin(table.rotation.y)*offset;
+            
+            b.castShadow = true;
+            b.userData.isBottle = true; 
+            scene.add(b); shootables.push(b);
+            
+            bottles.push({ mesh: b, vel: new THREE.Vector3(), rot: new THREE.Vector3(), active: true, startPos: b.position.clone() });
+        }
+
+        // ZONA 3: O Boneco "Dummy" (O Saco de Pancadas)
+        const dummyGrp = new THREE.Group();
+        const dBody = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.3).translate(0, 1.25, 0), mats.dummyShirt); dBody.castShadow=true; dummyGrp.add(dBody);
+        const dLegs = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.2).translate(0, 0.4, 0), mats.dummyPants); dLegs.castShadow=true; dummyGrp.add(dLegs);
+        const dHead = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35).translate(0, 1.9, 0), mats.dummySkin); dHead.castShadow=true; dummyGrp.add(dHead);
+        
+        dBody.userData = { isBody: true }; dHead.userData = { isHeadshot: true };
+        shootables.push(dBody, dHead); // Atirar nas pernas não conta pontuação de feedback
+        
+        dummyGrp.position.set(0, 0, -25);
+        scene.add(dummyGrp);
+        let dummyReaction = 0; // Temporizador para o impacto
+
+        // ==========================================
+        // 6. AS ARMAS: O FPS E O CORPO TPS
+        // ==========================================
+        // 6A. ARMA FPS (Visão em Primeira Pessoa - Fica cravada no campo de visão)
+        const fpsWeaponGrp = new THREE.Group();
+        
+        // Corpo do marcador (Speedball)
+        const fBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.35), mats.markerBody); 
+        fBody.position.set(0, 0, 0); // Centro da arma
+        
+        // Cano estendido
+        const fBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.4).rotateX(Math.PI/2), mats.markerParts); 
+        fBarrel.position.set(0, 0.03, -0.35); // Cresce pro eixo -Z (Frente do jogo)
+        
+        // Hopper (Tanque de bolinhas em cima)
+        const fHop = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), mats.markerParts); 
+        fHop.scale.set(0.8, 1, 1.2); 
+        fHop.position.set(0, 0.15, -0.05);
+        
+        // Cilindro de ar (Atrás)
+        const fTank = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.2).rotateX(Math.PI/2), mats.markerParts); 
+        fTank.position.set(0, -0.05, 0.25);
+        
+        fpsWeaponGrp.add(fBody, fBarrel, fHop, fTank);
+        
+        // Posiciona no canto direito inferior da tela!
+        fpsWeaponGrp.position.set(0.2, -0.2, -0.6); 
+        pitchObject.add(fpsWeaponGrp); // A arma vive DENTRO do eixo vertical da câmara
+
+        // 6B. MODELO TPS (Corpo inteiro visto de trás)
+        const tpsPlayerGrp = new THREE.Group();
+        // Malhas simples do corpo
+        const pBody = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.2).translate(0, 1.1, 0), mats.dummyPants); pBody.castShadow=true; tpsPlayerGrp.add(pBody);
+        const pHead = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25).translate(0, 1.6, 0), mats.markerParts); pHead.castShadow=true; tpsPlayerGrp.add(pHead);
+        const pLegL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15).translate(-0.12, 0.4, 0), mats.dummyPants); pLegL.castShadow=true; tpsPlayerGrp.add(pLegL);
+        const pLegR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15).translate(0.12, 0.4, 0), mats.dummyPants); pLegR.castShadow=true; tpsPlayerGrp.add(pLegR);
+        
+        // A arma em terceira pessoa
+        const tpsWeapon = fpsWeaponGrp.clone();
+        tpsWeapon.position.set(0.2, 1.2, -0.3); // O modelo também aponta pro -Z naturalmente
+        tpsPlayerGrp.add(tpsWeapon);
+        
+        scene.add(tpsPlayerGrp);
+        // Escondemos o corpo no FPS para não atrapalhar a visão
+        tpsPlayerGrp.visible = false; 
+
+        // Atualização das cores via Menu
+        document.getElementById('c-marker').addEventListener('input', (e) => { 
+            mats.markerBody.color.set(e.target.value); 
+            mats.paintball.color.set(e.target.value); 
+        });
+
+        // ==========================================
+        // 7. FÍSICA DE MOVIMENTO FPS/TPS E DISPARO
+        // ==========================================
+        let moveF = false, moveB = false, moveL = false, moveR = false, canJump = false;
+        const velocity = new THREE.Vector3();
+
+        document.addEventListener('keydown', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = true; break; case 'KeyA': moveL = true; break;
+                case 'KeyS': moveB = true; break; case 'KeyD': moveR = true; break;
+                case 'Space': if(canJump) velocity.y += 8; canJump = false; break;
+                case 'KeyV': 
+                    if(isLocked) {
+                        isTPS = !isTPS;
+                        document.getElementById('cam-mode').innerText = isTPS ? "3ª Pessoa (TPS)" : "1ª Pessoa (FPS)";
+                        document.getElementById('cam-mode').style.color = isTPS ? "#fbbf24" : "#10b981";
+                    } break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = false; break; case 'KeyA': moveL = false; break;
+                case 'KeyS': moveB = false; break; case 'KeyD': moveR = false; break;
+            }
+        });
+
+        // TINTAS / SPLATTERS (Com DepthWrite fixo para evitar glitch na parede)
+        const paintballs = [];
+
+        function spawnDecal(pt, norm, col) {
+            // Usamos MeshBasicMaterial com PolygonOffset para empurrar o decalque 1 milímetro e evitar Z-fighting
+            const decMat = new THREE.MeshBasicMaterial({ 
+                map: splatterTex, color: col, transparent: true, opacity: 0.9, 
+                depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 
+            });
+            const decGeo = new THREE.PlaneGeometry(0.5 + Math.random()*0.4, 0.5 + Math.random()*0.4);
+            const dec = new THREE.Mesh(decGeo, decMat);
+            
+            dec.position.copy(pt);
+            // Alinha o decal perfeitamente com a face que bateu (normal)
+            dec.lookAt(pt.clone().add(norm)); 
+            dec.rotation.z = Math.random() * Math.PI * 2; // Roda aleatório pra não ficar igual
+            
+            scene.add(dec); 
+            // Apaga após 15 segundos para não lotar a RAM
+            setTimeout(() => { scene.remove(dec); dec.geometry.dispose(); dec.material.dispose(); }, 15000);
+        }
+
+        // Interface do X no centro da tela
+        const hmUI = document.getElementById('hit-marker');
+        function triggerHitMarker(isHead) {
+            hmUI.classList.remove('active', 'headshot'); void hmUI.offsetWidth; // Reflow magic
+            if(isHead) hmUI.classList.add('headshot'); hmUI.classList.add('active');
+            setTimeout(() => hmUI.classList.remove('active'), 150);
+        }
+
+        const raycaster = new THREE.Raycaster();
+        let recoilActive = 0;
+        let playerScore = 0;
+
+        document.addEventListener('mousedown', (e) => {
+            if (!isLocked || e.button !== 0) return;
+            recoilActive = 0.08; // Engatilha o recuo da arma na tela
+
+            const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), mats.paintball);
+            
+            // MÁGICA DO TIRO FPS: O tiro sai exatamente da posição MUNDIAL da câmera
+            camera.getWorldPosition(bullet.position);
+            
+            const shootDir = new THREE.Vector3();
+            camera.getWorldDirection(shootDir); // shootDir sempre será o centro da tela (Crosshair)
+            
+            // Empurra a bolinha meio metro pra frente pra não bater no próprio jogador
+            bullet.position.add(shootDir.clone().multiplyScalar(0.5)); 
+            
+            bullet.velocity = shootDir.multiplyScalar(2.5); // Velocidade monstra
+            bullet.velocity.add(velocity.clone().multiplyScalar(0.01)); // Puxa um pouco a inércia de corrida
+            bullet.userData = { color: mats.paintball.color.getHex(), life: 0 };
+            
+            paintballs.push(bullet); scene.add(bullet);
+        });
+
+        // ==========================================
+        // 8. O MOTOR DO JOGO (UPDATE LOOP)
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+            const time = Date.now() * 0.001;
+
+            // --- 1. LÓGICA DE MOVIMENTAÇÃO (A Prova de Falhas) ---
+            if (isLocked) {
+                // Atrito e Gravidade
+                velocity.x -= velocity.x * 10.0 * delta; 
+                velocity.z -= velocity.z * 10.0 * delta; 
+                velocity.y -= 25.0 * delta; 
+                
+                // Entradas de Movimento (1 pra Frente, -1 Trás, etc)
+                const moveZ = Number(moveF) - Number(moveB); // W e S
+                const moveX = Number(moveR) - Number(moveL); // D e A
+                
+                // Encontrar os vetores de "Frente" e "Lado" relativos à câmera (ignora o Pitch/olhar pra baixo)
+                const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(yawObject.quaternion).normalize();
+                const rgt = new THREE.Vector3(1, 0, 0).applyQuaternion(yawObject.quaternion).normalize();
+
+                const moveVector = new THREE.Vector3();
+                moveVector.addScaledVector(fwd, moveZ); // Se apertou W (moveZ=1), soma o vetor Frente
+                moveVector.addScaledVector(rgt, moveX); // Se apertou D (moveX=1), soma o vetor Direita
+                
+                if(moveVector.lengthSq() > 0) moveVector.normalize(); // Evita correr em dobro nas diagonais
+
+                const spd = 40.0;
+                velocity.x += moveVector.x * spd * delta;
+                velocity.z += moveVector.z * spd * delta;
+
+                // Move de fato!
+                yawObject.position.x += velocity.x * delta;
+                yawObject.position.z += velocity.z * delta;
+                yawObject.position.y += velocity.y * delta;
+
+                // Limite do Chão e Pulo (Simples)
+                if(yawObject.position.y < 1.6) { 
+                    velocity.y = 0; 
+                    yawObject.position.y = 1.6; 
+                    canJump = true; 
+                }
+
+                // Limite da Arena (Não entra na floresta de colisão fechada)
+                if (Math.abs(yawObject.position.x) > 30) yawObject.position.x = Math.sign(yawObject.position.x) * 30;
+                if (Math.abs(yawObject.position.z) > 40) yawObject.position.z = Math.sign(yawObject.position.z) * 40;
+            }
+
+            // --- 2. TRANSIÇÃO DE CÂMERAS E ANIMAÇÃO DA ARMA ---
+            if (isTPS) {
+                // Câmera voa pra trás do ombro
+                camera.position.lerp(new THREE.Vector3(0.6, 0.5, 3.5), 0.2); 
+                fpsWeaponGrp.visible = false;
+                tpsPlayerGrp.visible = true;
+            } else {
+                // Câmera entra nos olhos do boneco
+                camera.position.lerp(new THREE.Vector3(0, 0, 0), 0.3); 
+                fpsWeaponGrp.visible = true;
+                tpsPlayerGrp.visible = false; 
+            }
+
+            // O modelo 3D acompanha a posição do jogador suavemente
+            tpsPlayerGrp.position.copy(yawObject.position);
+            tpsPlayerGrp.position.y -= 1.6; // Desce pro nível da grama
+            
+            // Como o modelo já foi construído olhando pra Frente (-Z), basta igualar as rotações!
+            tpsPlayerGrp.rotation.y = THREE.MathUtils.lerp(tpsPlayerGrp.rotation.y, yawObject.rotation.y, 0.2);
+
+            // Animação brutal de Recuo (FPS)
+            if (recoilActive > 0) {
+                // A arma "chuta" para trás no Z e levanta no X
+                fpsWeaponGrp.position.z = -0.6 + (recoilActive * 1.5);
+                fpsWeaponGrp.rotation.x = recoilActive * 1.5;
+                recoilActive -= delta * 0.8;
+            } else {
+                fpsWeaponGrp.position.z = -0.6; fpsWeaponGrp.rotation.x = 0;
+            }
+
+            // Efeito Bobbing (Balançar a arma enquanto anda)
+            const speed = Math.sqrt(velocity.x**2 + velocity.z**2);
+            if(speed > 0.5 && canJump) {
+                const bob = Math.sin(time * 12) * 0.02;
+                fpsWeaponGrp.position.y = -0.2 + Math.abs(bob); // Sobe e desce
+                fpsWeaponGrp.position.x = 0.2 + bob; // Pêndulo pro lado
+            } else {
+                fpsWeaponGrp.position.y = -0.2; fpsWeaponGrp.position.x = 0.2;
+            }
+
+            // --- 3. REAÇÕES DO AMBIENTE (Dummy & Garrafas) ---
+            if (dummyReaction > 0) {
+                dummyGrp.rotation.x = -0.2; // Inclina pra trás com a porrada
+                dummyReaction--;
+            } else {
+                dummyGrp.rotation.x = 0;
+            }
+
+            bottles.forEach(b => {
+                if(b.active) {
+                    b.mesh.position.add(b.vel); 
+                    b.mesh.rotation.x += b.rot.x; 
+                    b.mesh.rotation.z += b.rot.z;
+                    b.vel.y -= 0.015; // Gravidade nelas!
+
+                    // Se bater na mesa
+                    if(b.mesh.position.y < 1.2 && Math.abs(b.mesh.position.x - (-15)) < 4 && Math.abs(b.mesh.position.z - (-15)) < 1) {
+                        b.mesh.position.y = 1.2; 
+                        b.vel.y *= -0.3; // Quica
+                        b.vel.x *= 0.8; b.vel.z *= 0.8; // Atrito da madeira
+                        b.rot.multiplyScalar(0.8);
+                    }
+                    
+                    // Se cair no chão, respawn mágico depois de um tempo
+                    if(b.mesh.position.y < 0) {
+                        b.mesh.position.y = -5; // Esconde debaixo da terra
+                        if(b.vel.lengthSq() < 0.01) {
+                            setTimeout(() => { 
+                                b.mesh.position.copy(b.startPos); 
+                                b.vel.set(0,0,0); b.rot.set(0,0,0); 
+                                b.mesh.material.color.setHex(0xa5f3fc); // Limpa a tinta!
+                            }, 2000);
+                            b.vel.set(0,0.1,0); // Trava pra não acionar o setTimeout 50 vezes
+                        }
+                    }
+                }
+            });
+
+            // --- 4. A BALÍSTICA DAS BOLINHAS DE PAINTBALL (RAYCAST) ---
+            for(let i=paintballs.length-1; i>=0; i--) {
+                const b = paintballs[i]; 
+                b.userData.life++; 
+                b.velocity.y -= 0.012; // Bullet Drop (Gravidade empurrando a bolinha pra baixo)
+                
+                const nextPos = b.position.clone().add(b.velocity);
+                const dist = b.position.distanceTo(nextPos);
+                
+                // Raycast do ponto A ao B no mesmo frame (CCD pra não atravessar objetos!)
+                raycaster.set(b.position, b.velocity.clone().normalize());
+                const hitArr = raycaster.intersectObjects(shootables, true);
+
+                let hit = false;
+                if(hitArr.length > 0 && hitArr[0].distance <= dist) {
+                    hit = true; 
+                    const impact = hitArr[0]; 
+                    const obj = impact.object;
+                    
+                    // Pinta o que tocou!
+                    spawnDecal(impact.point, impact.face ? impact.face.normal : new THREE.Vector3(0,1,0), b.userData.color);
+
+                    // AVALIA O QUE FOI ATINGIDO
+                    if(obj.userData.isTarget) {
+                        triggerHitMarker(false); 
+                        playerScore += obj.userData.score;
+                        document.getElementById('score-display').innerText = "PONTUAÇÃO: " + playerScore;
+                    } 
+                    else if (obj.userData.isBody || obj.userData.isHeadshot) {
+                        triggerHitMarker(obj.userData.isHeadshot); 
+                        dummyReaction = 15; // Feedback visual de porrada
+                    } 
+                    else if (obj.userData.isBottle) {
+                        triggerHitMarker(false); 
+                        obj.material.color.setHex(b.userData.color); // Pinta a garrafa toda!
+                        const bData = bottles.find(bt => bt.mesh === obj);
+                        if(bData) { 
+                            // Transfere o momento linear do tiro pra garrafa rodopiar
+                            bData.vel.add(b.velocity.clone().multiplyScalar(0.1)); 
+                            bData.vel.y += 0.15; // Pulito
+                            bData.rot.set(Math.random()*0.3, 0, Math.random()*0.3); 
+                        }
+                    }
+                }
+
+                // Remove se bateu, se afundou no chão ou se ficou muito tempo voando
+                if(hit || b.position.y < 0 || b.userData.life > 120) { 
+                    scene.remove(b); b.geometry.dispose(); b.material.dispose(); paintballs.splice(i, 1); 
+                }
+                else { 
+                    b.position.copy(nextPos); 
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => { 
+            camera.aspect = window.innerWidth/window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

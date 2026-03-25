@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Paintball - Jogadora Pro</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            user-select: none;
+            background: linear-gradient(to bottom, #111, #222, #111);
+        }
+        canvas { display: block; }
+        
+        #toggle-panel-btn {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: #dfff00; /* Amarelo Neon / Verde Limão */
+            color: #111;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(223, 255, 0, 0.4);
+            border: 2px solid #b3cc00;
+            transition: transform 0.2s, background 0.2s;
+        }
+        #toggle-panel-btn:hover {
+            transform: scale(1.05);
+            background: #ccff00;
+        }
+
+        #customizer-panel {
+            position: absolute;
+            top: 80px;
+            right: 30px;
+            width: 320px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 25px;
+            border-radius: 8px;
+            border: 2px solid rgba(223, 255, 0, 0.3);
+            backdrop-filter: blur(15px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s;
+        }
+        
+        #customizer-panel.hidden {
+            transform: translateX(120%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #customizer-panel::-webkit-scrollbar { width: 6px; }
+        #customizer-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); border-radius: 4px; }
+        #customizer-panel::-webkit-scrollbar-thumb { background: #dfff00; border-radius: 4px; }
+        
+        .panel-header {
+            font-size: 1.5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #dfff00;
+            border-bottom: 2px solid rgba(223, 255, 0, 0.6);
+            padding-bottom: 10px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 5px rgba(223, 255, 0, 0.3);
+        }
+
+        .control-section {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .control-section h3 {
+            margin: 0 0 5px 0;
+            font-size: 1rem;
+            color: #fff;
+            border-left: 3px solid #ff3333;
+            padding-left: 8px;
+            text-transform: uppercase;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            color: #aaa;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        select {
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            border: 1px solid rgba(223, 255, 0, 0.4);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        select:hover, select:focus { 
+            border-color: #dfff00; 
+            box-shadow: 0 0 8px rgba(223, 255, 0, 0.3);
+        }
+
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 35px;
+            height: 35px;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 0;
+            background: none;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 4px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+
+        .view-controls {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            background: rgba(20, 20, 20, 0.85);
+            padding: 15px 25px;
+            border-radius: 6px;
+            border: 1px solid rgba(223, 255, 0, 0.3);
+            backdrop-filter: blur(10px);
+            font-size: 0.85rem;
+            color: #aaa;
+            letter-spacing: 1px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .view-controls strong { color: #dfff00; }
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <button id="toggle-panel-btn">🎯 Loadout</button>
+
+    <div id="customizer-panel">
+        <div class="panel-header">Arena de Paintball</div>
+
+        <!-- SEÇÃO: AÇÕES -->
+        <div class="control-section" style="border-color: #ff3333;">
+            <h3 style="color: #ff3333; border-left-color: #ff3333;">Movimentação Tática</h3>
+            <div class="control-group">
+                <select id="sel-anim">
+                    <option value="idle">Pronta (Idle)</option>
+                    <option value="walk">Avanço Cauteloso</option>
+                    <option value="run">Rush (Corrida Rápida)</option>
+                    <option value="jump">Mergulho (Superman)</option>
+                    <option value="attack">Rajar! (Atirar)</option>
+                    <option value="crouch">Ajoelhada no Bunker</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- SEÇÃO: EQUIPAMENTOS -->
+        <div class="control-section">
+            <h3>Equipamentos (Gear)</h3>
+            <div class="control-group">
+                <label>CABELO / MÁSCARA</label>
+                <select id="sel-mask">
+                    <option value="speed_ponytail">Máscara + Rabo de Cavalo</option>
+                    <option value="speed_bob">Máscara + Cabelo Curto</option>
+                    <option value="tactical">Capacete Tático + Máscara</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>MARCADOR (ARMA)</label>
+                <select id="sel-marker">
+                    <option value="speedball">Marcador Speedball (Rápido)</option>
+                    <option value="woodsball">Marcador Woodsball (Longo)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>CINTO / COSTAS</label>
+                <select id="sel-pack">
+                    <option value="podpack">Pod Pack (Tubos de Bolinhas)</option>
+                    <option value="vest">Colete Tático Leve</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- SEÇÃO: CORES -->
+        <div class="control-section">
+            <h3>Cores do Time</h3>
+            <div class="control-group">
+                <label>JERSEY / ROUPA</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-jersey" value="#ff007f">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>CALÇAS</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-pants" value="#111111">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>MÁSCARA / LENTE</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-lens" value="#dfff00">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>MARCADOR & BOLINHAS</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-marker" value="#00f3ff">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>CABELO</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="color-hair" value="#111111">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="view-controls">
+        <strong>ROTACIONAR:</strong> Clique Esq. & Arrasta <br><br>
+        <strong>ZOOM:</strong> Scroll do Rato <br><br>
+        <strong>PAN:</strong> Clique Dir. & Arrasta
+    </div>
+
+    <script>
+        // --- SETUP BÁSICO ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x111111, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(-2.5, 1.5, 4.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 10;
+        controls.minDistance = 1.5;
+        controls.target.set(0, 1.0, 0);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- ILUMINAÇÃO DE ARENA (Refletores) ---
+        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x222222, 0.4); 
+        scene.add(ambientLight);
+
+        const spotLight1 = new THREE.SpotLight(0xffffff, 0.8);
+        spotLight1.position.set(4, 6, 4);
+        spotLight1.angle = Math.PI / 4;
+        spotLight1.penumbra = 0.3;
+        spotLight1.castShadow = true;
+        spotLight1.shadow.mapSize.width = 2048;
+        spotLight1.shadow.mapSize.height = 2048;
+        scene.add(spotLight1);
+
+        const spotLight2 = new THREE.SpotLight(0xaaddff, 0.5); 
+        spotLight2.position.set(-4, 5, -4);
+        scene.add(spotLight2);
+
+        // --- AMBIENTE (Arena Turf/Grama Sintética) ---
+        const podiumGeo = new THREE.CylinderGeometry(2.0, 2.2, 0.2, 16);
+        const podiumMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+        const podium = new THREE.Mesh(podiumGeo, podiumMat);
+        podium.position.set(0, -0.1, 0);
+        podium.receiveShadow = true;
+        scene.add(podium);
+
+        const turfGeo = new THREE.RingGeometry(0.5, 1.9, 16);
+        const turfMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 1.0 }); 
+        const turf = new THREE.Mesh(turfGeo, turfMat);
+        turf.rotation.x = -Math.PI / 2;
+        turf.position.set(0, 0.01, 0);
+        turf.receiveShadow = true;
+        scene.add(turf);
+
+        // Um mini bunker invisível ou caixa baixa para compor cenário
+        const bunkerGeo = new THREE.BoxGeometry(1.0, 0.8, 0.4);
+        const bunkerMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c, roughness: 0.6 }); 
+        const bunker = new THREE.Mesh(bunkerGeo, bunkerMat);
+        bunker.position.set(0, 0.4, 1.5);
+        bunker.receiveShadow = true;
+        bunker.castShadow = true;
+        scene.add(bunker);
+
+        // --- ESTADO E MATERIAIS ---
+        const config = {
+            mask: 'speed_ponytail', marker: 'speedball', pack: 'podpack',
+            anim: 'idle'
+        };
+
+        const mats = {
+            skin: new THREE.MeshStandardMaterial({ color: 0xf1c27d, flatShading: true, roughness: 0.5 }), 
+            jersey: new THREE.MeshStandardMaterial({ color: 0xff007f, flatShading: true, roughness: 0.8 }), 
+            pants: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, roughness: 0.9 }), 
+            gear: new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true, roughness: 0.7 }), 
+            lens: new THREE.MeshStandardMaterial({ color: 0xdfff00, flatShading: true, roughness: 0.1, metalness: 0.8 }), 
+            hair: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, roughness: 0.8 }),
+            markerBody: new THREE.MeshStandardMaterial({ color: 0x00f3ff, flatShading: true, metalness: 0.5, roughness: 0.4 }),
+            markerParts: new THREE.MeshStandardMaterial({ color: 0x111111, flatShading: true, roughness: 0.6 }),
+            paintball: new THREE.MeshBasicMaterial({ color: 0x00f3ff }) 
+        };
+
+        // --- GRUPOS E REFERÊNCIAS ---
+        const pbGroup = new THREE.Group(); scene.add(pbGroup);
+        const pBodyGroup = new THREE.Group(); pbGroup.add(pBodyGroup);
+        const pHeadGroup = new THREE.Group(); pbGroup.add(pHeadGroup);
+        const pLimbsGroup = new THREE.Group(); pbGroup.add(pLimbsGroup);
+        const pMarkerGroup = new THREE.Group(); scene.add(pMarkerGroup);
+        
+        let paintballs = [];
+
+        let animated = {
+            leftArm: null, rightArm: null, leftLeg: null, rightLeg: null, 
+            hairTail: null, // Rabo de cavalo
+            hipL: new THREE.Vector3(), hipR: new THREE.Vector3(),
+            baseHandR: new THREE.Vector3(0.15, 1.0, 0.2), 
+            baseHandL: new THREE.Vector3(-0.15, 1.05, 0.5), 
+            baseFootL: new THREE.Vector3(-0.15, 0.05, 0.0), 
+            baseFootR: new THREE.Vector3(0.15, 0.05, 0.0),
+            currentHandL: new THREE.Vector3(), currentHandR: new THREE.Vector3(),
+            currentFootL: new THREE.Vector3(), currentFootR: new THREE.Vector3(),
+            currentBodyY: 0, currentBodyRotX: 0
+        };
+
+        // Proporções Femininas (Pernas longas, braços mais finos, ombros estreitos)
+        const PROPS = { armUpperLen: 0.32, armLowerLen: 0.33, thighLen: 0.48, calfLen: 0.48 };
+
+        // --- FUNÇÕES IK ---
+        function clearGroup(group) {
+            while(group.children.length > 0){ 
+                let child = group.children[0];
+                group.remove(child); 
+                if(child.geometry) child.geometry.dispose();
+            }
+        }
+
+        function createLimb(rTop, rBot, length, mat, parentGroup) {
+            const geo = new THREE.CylinderGeometry(rTop, rBot, length, 8);
+            geo.translate(0, -length / 2, 0); 
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            parentGroup.add(mesh);
+            return mesh;
+        }
+
+        function orientLimb(mesh, startPos, endPos) {
+            mesh.position.copy(startPos);
+            const dir = new THREE.Vector3().subVectors(endPos, startPos);
+            if (dir.lengthSq() < 0.0001) return; 
+            dir.normalize();
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+        }
+
+        function solveIK(startPos, targetPos, len1, len2, bendDir) {
+            const dir = new THREE.Vector3().subVectors(targetPos, startPos);
+            const maxReach = len1 + len2 - 0.001;
+            let dist = dir.length();
+            if (dist > maxReach) { dist = maxReach; dir.normalize().multiplyScalar(maxReach); }
+            const normalDir = dir.clone().normalize();
+            const cosAlpha = (len1*len1 + dist*dist - len2*len2) / (2 * len1 * dist);
+            const alpha = Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
+            const d1 = len1 * Math.cos(alpha);
+            const basePos = new THREE.Vector3().copy(startPos).add(normalDir.clone().multiplyScalar(d1));
+            const h = len1 * Math.sin(alpha);
+            const n = new THREE.Vector3().copy(bendDir);
+            const projection = normalDir.clone().multiplyScalar(n.dot(normalDir));
+            n.sub(projection).normalize();
+            return basePos.add(n.multiplyScalar(h));
+        }
+
+        // --- CONSTRUINDO A JOGADORA ---
+        function buildPlayer() {
+            clearGroup(pBodyGroup); clearGroup(pHeadGroup); clearGroup(pLimbsGroup); clearGroup(pMarkerGroup);
+            animated.hairTail = null;
+            
+            const shoulderLocal = new THREE.Vector3(0, 1.45, 0);
+            const torsoUpperLen = 0.3;
+            const torsoLowerLen = 0.25;
+
+            // TRONCO (Proporção Feminina: Cintura mais fina, quadril marcado)
+            const chestGeo = new THREE.CylinderGeometry(0.14, 0.10, torsoUpperLen, 12);
+            chestGeo.translate(0, -torsoUpperLen/2, 0);
+            const chest = new THREE.Mesh(chestGeo, mats.jersey);
+            chest.position.copy(shoulderLocal);
+            chest.castShadow = true;
+            pBodyGroup.add(chest);
+
+            const beltGeo = new THREE.CylinderGeometry(0.105, 0.105, 0.05, 12);
+            const belt = new THREE.Mesh(beltGeo, mats.gear);
+            belt.position.y = -torsoUpperLen;
+            chest.add(belt);
+
+            const pelvisGeo = new THREE.CylinderGeometry(0.10, 0.16, torsoLowerLen, 12);
+            pelvisGeo.translate(0, -torsoLowerLen/2, 0);
+            const pelvis = new THREE.Mesh(pelvisGeo, mats.pants);
+            pelvis.position.y = -torsoUpperLen;
+            chest.add(pelvis);
+
+            // COLETE / POD PACK
+            if (config.pack === 'podpack') {
+                const harnessGeo = new THREE.BoxGeometry(0.35, 0.12, 0.22);
+                const harness = new THREE.Mesh(harnessGeo, mats.gear);
+                harness.position.y = -torsoUpperLen + 0.02;
+                chest.add(harness);
+
+                for(let i=-1; i<=1; i++) {
+                    const podGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25, 8);
+                    const pod = new THREE.Mesh(podGeo, mats.gear);
+                    pod.position.set(i * 0.12, -torsoUpperLen + 0.05, -0.15); 
+                    pod.rotation.x = -Math.PI / 10; 
+                    
+                    const capGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.04, 8);
+                    const cap = new THREE.Mesh(capGeo, mats.lens);
+                    cap.position.y = -0.13;
+                    pod.add(cap);
+                    
+                    chest.add(pod);
+                }
+            } else if (config.pack === 'vest') {
+                const vestGeo = new THREE.CylinderGeometry(0.145, 0.12, 0.28, 12);
+                vestGeo.translate(0, -0.14, 0);
+                const vest = new THREE.Mesh(vestGeo, mats.gear);
+                vest.position.y = -0.02;
+                chest.add(vest);
+            }
+
+            // PERNAS E JOELHEIRAS
+            const hipLocalY = 0.9;
+            animated.hipL.set(-0.11, hipLocalY, 0);
+            animated.hipR.set(0.11, hipLocalY, 0);
+
+            const thighL = createLimb(0.08, 0.06, PROPS.thighLen, mats.pants, pLimbsGroup); 
+            const calfL = createLimb(0.06, 0.04, PROPS.calfLen, mats.pants, pLimbsGroup);
+            const thighR = createLimb(0.08, 0.06, PROPS.thighLen, mats.pants, pLimbsGroup);
+            const calfR = createLimb(0.06, 0.04, PROPS.calfLen, mats.pants, pLimbsGroup);
+
+            const kneeGeo = new THREE.BoxGeometry(0.1, 0.12, 0.1);
+            const kneeL = new THREE.Mesh(kneeGeo, mats.gear); kneeL.position.set(0, 0, 0.03); calfL.add(kneeL);
+            const kneeR = new THREE.Mesh(kneeGeo, mats.gear); kneeR.position.set(0, 0, 0.03); calfR.add(kneeR);
+
+            const shoeGeo = new THREE.BoxGeometry(0.08, 0.08, 0.18);
+            shoeGeo.translate(0, -0.04, 0.04); 
+            const shoeL = new THREE.Mesh(shoeGeo, mats.gear); shoeL.position.y = -PROPS.calfLen; calfL.add(shoeL);
+            const shoeR = new THREE.Mesh(shoeGeo, mats.gear); shoeR.position.y = -PROPS.calfLen; calfR.add(shoeR);
+
+            animated.leftLeg = { up: thighL, low: calfL };
+            animated.rightLeg = { up: thighR, low: calfR };
+
+            // CABEÇA, CABELO E MÁSCARA
+            pHeadGroup.position.copy(shoulderLocal);
+            pHeadGroup.position.y += 0.05;
+
+            const headGeo = new THREE.BoxGeometry(0.14, 0.18, 0.15);
+            const head = new THREE.Mesh(headGeo, mats.skin); 
+            head.position.y = 0.09;
+            pHeadGroup.add(head);
+
+            // Cabelo base
+            const hairBaseGeo = new THREE.BoxGeometry(0.15, 0.06, 0.16);
+            const hairBase = new THREE.Mesh(hairBaseGeo, mats.hair);
+            hairBase.position.y = 0.18;
+            pHeadGroup.add(hairBase);
+
+            if (config.mask.includes('ponytail')) {
+                const tailGeo = new THREE.CylinderGeometry(0.03, 0.01, 0.3, 8);
+                tailGeo.translate(0, -0.15, 0); 
+                const tail = new THREE.Mesh(tailGeo, mats.hair);
+                tail.position.set(0, 0.18, -0.08); 
+                tail.rotation.x = 0.2;
+                pHeadGroup.add(tail);
+                animated.hairTail = tail; 
+            } else if (config.mask.includes('bob')) {
+                const bobGeo = new THREE.BoxGeometry(0.16, 0.12, 0.16);
+                const bob = new THREE.Mesh(bobGeo, mats.hair);
+                bob.position.set(0, 0.15, -0.01);
+                pHeadGroup.add(bob);
+            }
+
+            // Máscara Paintball (Feminina ajustada)
+            const maskGroup = new THREE.Group();
+            maskGroup.position.set(0, 0.08, 0.04); 
+
+            if (config.mask === 'tactical') {
+                const helmetGeo = new THREE.SphereGeometry(0.1, 16, 16, 0, Math.PI*2, 0, Math.PI/2);
+                const helmet = new THREE.Mesh(helmetGeo, mats.pants); 
+                helmet.position.y = 0.1;
+                helmet.scale.set(1, 0.8, 1);
+                pHeadGroup.add(helmet);
+            }
+
+            const maskBaseGeo = new THREE.BoxGeometry(0.16, 0.16, 0.12);
+            const maskBase = new THREE.Mesh(maskBaseGeo, mats.gear);
+            maskBase.position.set(0, 0, 0.05);
+            maskGroup.add(maskBase);
+
+            const lensGeo = new THREE.BoxGeometry(0.17, 0.06, 0.04);
+            const lens = new THREE.Mesh(lensGeo, mats.lens);
+            lens.position.set(0, 0.03, 0.10); 
+            maskGroup.add(lens);
+
+            const grillGeo = new THREE.BoxGeometry(0.12, 0.05, 0.05);
+            const grill = new THREE.Mesh(grillGeo, mats.gear);
+            grill.position.set(0, -0.04, 0.11);
+            maskGroup.add(grill);
+
+            const visorGeo = new THREE.BoxGeometry(0.17, 0.02, 0.08);
+            const visor = new THREE.Mesh(visorGeo, mats.gear);
+            visor.position.set(0, 0.08, 0.11);
+            visor.rotation.x = -0.1;
+            maskGroup.add(visor);
+
+            pHeadGroup.add(maskGroup);
+
+            // BRAÇOS E LUVAS
+            const armL_Up = createLimb(0.05, 0.04, PROPS.armUpperLen, mats.jersey, pLimbsGroup);
+            const armL_Low = createLimb(0.04, 0.03, PROPS.armLowerLen, mats.jersey, pLimbsGroup); 
+            const armR_Up = createLimb(0.05, 0.04, PROPS.armUpperLen, mats.jersey, pLimbsGroup);
+            const armR_Low = createLimb(0.04, 0.03, PROPS.armLowerLen, mats.jersey, pLimbsGroup);
+
+            const handGeo = new THREE.BoxGeometry(0.04, 0.08, 0.04);
+            handGeo.translate(0, -0.04, 0); 
+            const handL = new THREE.Mesh(handGeo, mats.gear); handL.position.y = -PROPS.armLowerLen; armL_Low.add(handL);
+            const handR = new THREE.Mesh(handGeo, mats.gear); handR.position.y = -PROPS.armLowerLen; armR_Low.add(handR); 
+
+            animated.leftArm = { up: armL_Up, low: armL_Low };
+            animated.rightArm = { up: armR_Up, low: armR_Low };
+            animated.shoulderL = new THREE.Vector3(-0.16, shoulderLocal.y, shoulderLocal.z);
+            animated.shoulderR = new THREE.Vector3(0.16, shoulderLocal.y, shoulderLocal.z);
+
+            animated.currentHandL.copy(animated.baseHandL);
+            animated.currentHandR.copy(animated.baseHandR);
+            animated.currentFootL.copy(animated.baseFootL);
+            animated.currentFootR.copy(animated.baseFootR);
+
+            // --- MARCADOR DE PAINTBALL (Arma) ---
+            const bodyGeo = new THREE.BoxGeometry(0.04, 0.1, 0.25);
+            const body = new THREE.Mesh(bodyGeo, mats.markerBody);
+            body.position.set(0, 0.05, 0.1); 
+            pMarkerGroup.add(body);
+
+            const gripGeo = new THREE.BoxGeometry(0.03, 0.12, 0.04);
+            const grip = new THREE.Mesh(gripGeo, mats.gear);
+            grip.position.set(0, -0.05, 0);
+            pMarkerGroup.add(grip);
+
+            const tankGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.25, 12);
+            const tank = new THREE.Mesh(tankGeo, mats.markerParts);
+            tank.rotation.x = Math.PI / 2;
+            tank.position.set(0, -0.1, -0.15);
+            pMarkerGroup.add(tank);
+
+            const hopperGeo = new THREE.SphereGeometry(0.08, 16, 16);
+            const hopper = new THREE.Mesh(hopperGeo, mats.markerParts);
+            hopper.scale.set(0.8, 1, 1.2); 
+            hopper.position.set(0, 0.18, 0.08);
+            
+            const feedneckGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.05);
+            const feedneck = new THREE.Mesh(feedneckGeo, mats.markerParts);
+            feedneck.position.set(0, 0.12, 0.08);
+            pMarkerGroup.add(hopper, feedneck);
+
+            let barrelLen = (config.marker === 'woodsball') ? 0.4 : 0.25;
+            const barrelGeo = new THREE.CylinderGeometry(0.012, 0.012, barrelLen, 8);
+            const barrel = new THREE.Mesh(barrelGeo, mats.markerParts);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.06, 0.2 + (barrelLen/2)); 
+            pMarkerGroup.add(barrel);
+            
+            const foregripGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.1);
+            const foregrip = new THREE.Mesh(foregripGeo, mats.gear);
+            foregrip.position.set(0, 0, 0.25);
+            pMarkerGroup.add(foregrip);
+            
+            pMarkerGroup.castShadow = true;
+        }
+
+        buildPlayer();
+
+        // --- EVENTOS UI E CORES ---
+        document.getElementById('toggle-panel-btn').addEventListener('click', () => {
+            document.getElementById('customizer-panel').classList.toggle('hidden');
+        });
+
+        const binds = ['mask', 'marker', 'pack', 'anim'];
+        binds.forEach(key => {
+            document.getElementById('sel-' + key).addEventListener('change', (e) => {
+                config[key] = e.target.value;
+                if(key !== 'anim') buildPlayer(); 
+            });
+        });
+
+        function setupColorPicker(inputId, material) {
+            document.getElementById(inputId).addEventListener('input', (e) => {
+                material.color.set(e.target.value);
+            });
+        }
+        
+        setupColorPicker('color-jersey', mats.jersey);
+        setupColorPicker('color-pants', mats.pants);
+        setupColorPicker('color-lens', mats.lens);
+        setupColorPicker('color-hair', mats.hair);
+        
+        document.getElementById('color-marker').addEventListener('input', (e) => {
+            mats.markerBody.color.set(e.target.value);
+            mats.paintball.color.set(e.target.value);
+        });
+
+        // --- MÁQUINA DE ESTADOS & ANIMAÇÃO PAINTBALL ---
+        let time = 0;
+        let lastShootTime = 0; 
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            time += 0.04; 
+
+            let tBodyY = 0;
+            let tBodyRotX = 0;
+            let tBodyRotY = 0;
+            let tHandR = animated.baseHandR.clone();
+            let tHandL = new THREE.Vector3(); 
+            let tFootL = animated.baseFootL.clone();
+            let tFootR = animated.baseFootR.clone();
+            
+            let wRotX = 0; 
+            let wRotY = 0; 
+            let wRecoilZ = 0; 
+            let spd = 0;
+
+            switch(config.anim) {
+                case 'idle':
+                    tBodyY = Math.sin(time * 2) * 0.02; 
+                    tFootL.y -= tBodyY; tFootR.y -= tBodyY;
+                    
+                    tBodyRotY = -0.2; 
+                    tHandR.set(0.12, 0.95 + Math.sin(time*2)*0.01, 0.15); 
+                    wRotX = 0.2; 
+                    wRotY = 0.1;
+                    break;
+
+                case 'walk':
+                    spd = 6;
+                    tBodyY = Math.abs(Math.sin(time * spd)) * 0.03;
+                    tFootL.z += Math.sin(time * spd) * 0.25;
+                    tFootL.y += -tBodyY + Math.max(0, Math.cos(time * spd)) * 0.15;
+                    tFootR.z += Math.sin(time * spd + Math.PI) * 0.25;
+                    tFootR.y += -tBodyY + Math.max(0, Math.cos(time * spd + Math.PI)) * 0.15;
+                    
+                    tBodyRotY = -0.3; 
+                    tHandR.set(0.15, 1.05 + Math.sin(time*spd*2)*0.02, 0.15); 
+                    wRotX = 0; 
+                    break;
+
+                case 'run':
+                    spd = 12; 
+                    tBodyRotX = 0.4; 
+                    tBodyY = -0.1 + Math.abs(Math.sin(time * spd)) * 0.08;
+                    tFootL.z += Math.sin(time * spd) * 0.5;
+                    tFootL.y += -tBodyY + Math.max(0, Math.cos(time * spd)) * 0.3;
+                    tFootR.z += Math.sin(time * spd + Math.PI) * 0.5;
+                    tFootR.y += -tBodyY + Math.max(0, Math.cos(time * spd + Math.PI)) * 0.3;
+                    
+                    tBodyRotY = 0; 
+                    tHandR.set(0.15, 0.85, 0.1 + Math.sin(time*spd)*0.2); 
+                    wRotX = 0.5; 
+                    break;
+
+                case 'jump':
+                    spd = 5;
+                    tBodyY = Math.sin(time * spd) * 1.5 - 0.5; 
+                    if (Math.sin(time * spd) > 0) {
+                        tBodyRotX = 1.2; 
+                        tBodyRotY = 0;
+                        tHandR.set(0.15, 1.4, 0.7); 
+                        tFootL.set(-0.15, 0.5, -0.6); 
+                        tFootR.set(0.15, 0.5, -0.6);
+                        wRotX = 0;
+                    } else {
+                        tBodyY = -0.8; 
+                        tBodyRotX = 1.5; 
+                        tFootL.set(-0.15, -0.6, -0.8);
+                        tFootR.set(0.15, -0.6, -0.8);
+                        tHandR.set(0.15, -0.5, 0.4); 
+                        wRotX = -0.2;
+                    }
+                    break;
+
+                case 'crouch':
+                    tBodyY = -0.4;
+                    tBodyRotY = -0.4; 
+                    tBodyRotX = 0.1; 
+                    
+                    tFootL.set(-0.15, -tBodyY, 0.3); 
+                    tFootR.set(0.15, -tBodyY, -0.3); 
+                    tFootR.y += 0.3; 
+                    
+                    tHandR.set(0.15, 0.65, 0.15); 
+                    wRotX = 0;
+                    break;
+
+                case 'attack':
+                    tBodyY = -0.1; 
+                    tBodyRotY = -0.3;
+                    tFootL.z += 0.3; tFootL.y -= tBodyY;
+                    tFootR.z -= 0.3; tFootR.y -= tBodyY;
+
+                    tHandR.set(0.12, 1.05, 0.2); 
+                    wRotX = 0;
+
+                    wRecoilZ = Math.sin(time * 40) * 0.03; 
+
+                    if (time - lastShootTime > 0.15) { 
+                        lastShootTime = time;
+                        const pb = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), mats.paintball);
+                        pb.position.copy(animated.currentHandR);
+                        pb.position.y += 0.06; 
+                        pb.position.z += 0.5; 
+                        
+                        pb.userData.velocity = new THREE.Vector3(0, 0, 0.8).applyEuler(new THREE.Euler(wRotX, wRotY, 0));
+                        pb.userData.life = 0;
+                        
+                        scene.add(pb);
+                        paintballs.push(pb);
+                    }
+                    break;
+            }
+
+            let offsetL = new THREE.Vector3(-0.02, 0, 0.25);
+            offsetL.applyEuler(new THREE.Euler(wRotX, wRotY + tBodyRotY, 0)); 
+            tHandL.copy(tHandR).add(offsetL);
+
+            animated.currentBodyY = THREE.MathUtils.lerp(animated.currentBodyY, tBodyY, 0.15);
+            animated.currentBodyRotX = THREE.MathUtils.lerp(animated.currentBodyRotX, tBodyRotX, 0.15);
+            pBodyGroup.rotation.y = THREE.MathUtils.lerp(pBodyGroup.rotation.y, tBodyRotY, 0.15);
+            
+            animated.currentHandL.lerp(tHandL, 0.2);
+            animated.currentHandR.lerp(tHandR, 0.2);
+            animated.currentFootL.lerp(tFootL, 0.3);
+            animated.currentFootR.lerp(tFootR, 0.3);
+
+            if (animated.hairTail) {
+                animated.hairTail.rotation.x = 0.2 + Math.sin(time * 3) * 0.05 - pBodyGroup.rotation.x;
+            }
+
+            pbGroup.position.y = animated.currentBodyY;
+            pBodyGroup.rotation.x = animated.currentBodyRotX;
+            
+            let rotX = animated.currentBodyRotX;
+            let currentBodyRotY = pBodyGroup.rotation.y;
+
+            let headY = 1.45 * Math.cos(rotX);
+            let headZ = 1.45 * Math.sin(rotX);
+            pHeadGroup.position.set(0, headY, headZ);
+            pHeadGroup.rotation.x = rotX * 0.5;
+            pHeadGroup.rotation.y = -currentBodyRotY; 
+
+            // Proporções dos ombros e quadris da modelo feminina
+            let sy = 1.45 * Math.cos(rotX);
+            let sz = 1.45 * Math.sin(rotX);
+            let curShoulderL = new THREE.Vector3(-0.16, sy, sz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY); 
+            let curShoulderR = new THREE.Vector3(0.16, sy, sz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+
+            let hy = 0.9 * Math.cos(rotX);
+            let hz = 0.9 * Math.sin(rotX);
+            let curHipL = new THREE.Vector3(-0.11, hy, hz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+            let curHipR = new THREE.Vector3(0.11, hy, hz).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+
+            if (animated.leftArm && animated.rightArm) {
+                let elbowDirL = new THREE.Vector3(-1, -0.5, 0).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+                let elbowDirR = new THREE.Vector3(1, -0.5, 0).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+
+                const elbL = solveIK(curShoulderL, animated.currentHandL, PROPS.armUpperLen, PROPS.armLowerLen, elbowDirL);
+                orientLimb(animated.leftArm.up, curShoulderL, elbL); 
+                orientLimb(animated.leftArm.low, elbL, animated.currentHandL);
+
+                const elbR = solveIK(curShoulderR, animated.currentHandR, PROPS.armUpperLen, PROPS.armLowerLen, elbowDirR);
+                orientLimb(animated.rightArm.up, curShoulderR, elbR); 
+                orientLimb(animated.rightArm.low, elbR, animated.currentHandR);
+            }
+
+            if (animated.leftLeg && animated.rightLeg) {
+                const kneeDir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0,1,0), currentBodyRotY);
+                
+                const kneeL = solveIK(curHipL, animated.currentFootL, PROPS.thighLen, PROPS.calfLen, kneeDir);
+                orientLimb(animated.leftLeg.up, curHipL, kneeL); 
+                orientLimb(animated.leftLeg.low, kneeL, animated.currentFootL);
+
+                const kneeR = solveIK(curHipR, animated.currentFootR, PROPS.thighLen, PROPS.calfLen, kneeDir);
+                orientLimb(animated.rightLeg.up, curHipR, kneeR); 
+                orientLimb(animated.rightLeg.low, kneeR, animated.currentFootR);
+            }
+
+            pMarkerGroup.position.copy(animated.currentHandR);
+            pMarkerGroup.position.z -= wRecoilZ; 
+            
+            pMarkerGroup.rotation.x = THREE.MathUtils.lerp(pMarkerGroup.rotation.x, wRotX, 0.2);
+            pMarkerGroup.rotation.y = currentBodyRotY + wRotY; 
+
+            for (let i = paintballs.length - 1; i >= 0; i--) {
+                let pb = paintballs[i];
+                pb.position.add(pb.userData.velocity); 
+                pb.userData.velocity.y -= 0.01; 
+                pb.userData.life++;
+
+                if (pb.position.y < 0 || pb.userData.life > 30) {
+                    scene.remove(pb);
+                    pb.geometry.dispose();
+                    paintballs.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
