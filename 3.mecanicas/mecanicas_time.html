@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paint Killers - Team Skirmish</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050507; font-family: 'Outfit', sans-serif; color: white; user-select: none; }
+        canvas { display: block; }
+
+        /* UI Layer */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; z-index: 10; }
+        
+        /* Mira */
+        #center-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
+        #crosshair { width: 4px; height: 4px; background-color: #00f3ff; border-radius: 50%; box-shadow: 0 0 8px #00f3ff; position: relative; transition: all 0.2s; }
+        .ch-line { position: absolute; background-color: rgba(0, 243, 255, 0.7); transition: all 0.2s; }
+        .ch-top { width: 2px; height: 10px; top: -15px; left: 1px; }
+        .ch-bot { width: 2px; height: 10px; bottom: -15px; left: 1px; }
+        .ch-left { width: 10px; height: 2px; top: 1px; left: -15px; }
+        .ch-right { width: 10px; height: 2px; top: 1px; right: -15px; }
+        
+        /* Hit & Warning Feedbacks */
+        #crosshair.hit { background-color: #ff007f; box-shadow: 0 0 15px #ff007f; transform: scale(1.5); }
+        #crosshair.hit .ch-line { background-color: #ff007f; }
+        
+        #crosshair.friendly-fire { background-color: #dfff00; box-shadow: 0 0 15px #dfff00; transform: scale(1.2) rotate(45deg); }
+        #crosshair.friendly-fire .ch-line { background-color: #dfff00; }
+
+        #msg-center { position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); font-size: 1.5rem; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0,0,0,0.8); opacity: 0; transition: opacity 0.3s; color: #dfff00;}
+        #msg-center.show { opacity: 1; }
+
+        /* Dano HUD */
+        #damage-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 0px rgba(255,0,0,0); transition: box-shadow 0.1s; pointer-events: none;}
+        #damage-overlay.hurt { box-shadow: inset 0 0 150px rgba(255, 0, 50, 0.8); }
+        #damage-overlay.dead { box-shadow: inset 0 0 300px rgba(255, 0, 0, 1); background: rgba(255,0,0,0.3); transition: box-shadow 0s, background 0s;}
+
+        /* Placar Topo */
+        #hud-top { padding: 20px; display: flex; justify-content: center; width: 100%; box-sizing: border-box; }
+        .score-board { background: rgba(5,5,7,0.8); border: 1px solid rgba(255,255,255,0.1); padding: 10px 40px; border-radius: 8px; display: flex; gap: 50px; align-items: center; backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+        .score-team { display: flex; flex-direction: column; align-items: center; }
+        .score-team span { font-size: 0.8rem; color: #aaa; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;}
+        .score-team strong { font-size: 3rem; font-weight: 900; line-height: 1; }
+        .score-blue { color: #00f3ff; text-shadow: 0 0 10px rgba(0,243,255,0.4); }
+        .score-red { color: #ff007f; text-shadow: 0 0 10px rgba(255,0,127,0.4); }
+        .vs { color: #555; font-weight: 900; font-size: 1.2rem; }
+
+        /* Status Esquerda */
+        #hud-bottom-left { position: absolute; bottom: 30px; left: 30px; font-size: 0.9rem; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; border: 1px solid #333; backdrop-filter: blur(5px);}
+        .key-hint { color: #00f3ff; font-weight: bold; }
+        .health-bar { width: 200px; height: 10px; background: #333; border-radius: 5px; margin-top: 10px; overflow: hidden;}
+        .health-fill { width: 100%; height: 100%; background: #00f3ff; transition: width 0.2s; }
+
+        /* Menu Start */
+        #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(5,5,7,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; z-index: 50; }
+        .menu-box { text-align: center; max-width: 600px; background: rgba(20,20,25,0.9); padding: 40px; border-radius: 12px; border: 1px solid #334; box-shadow: 0 20px 50px rgba(0,0,0,0.8);}
+        .menu-box h1 { font-size: 3.5rem; color: #fff; margin-bottom: 0; text-transform: uppercase; letter-spacing: -1px; }
+        .menu-box h1 span { color: transparent; -webkit-text-stroke: 2px #00f3ff; }
+        .mode-badge { display: inline-block; background: #334; color: #fff; font-weight: 900; padding: 5px 15px; border-radius: 20px; font-size: 0.9rem; margin-top: -10px; letter-spacing: 2px; text-transform: uppercase;}
+        
+        .btn-start { background: #00f3ff; color: #111; border: none; padding: 15px 40px; font-size: 1.2rem; font-weight: 900; text-transform: uppercase; cursor: pointer; border-radius: 4px; margin-top: 30px; letter-spacing: 2px; transition: 0.2s; font-family: 'Outfit'; }
+        .btn-start:hover { transform: scale(1.05); background: #fff; box-shadow: 0 0 20px rgba(0,243,255,0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="blocker">
+        <div class="menu-box">
+            <h1>Team <span>Skirmish</span></h1>
+            <div class="mode-badge">Teste de Esquadrão / IA</div>
+            <p style="color: #aaa; font-size: 1.1rem; line-height: 1.6; margin-top: 20px;">
+                Combate de Esquadrões. Fogo amigo desativado.<br>
+                A tua equipa <b>(Azul)</b> avança e ataca apenas os inimigos <b>(Vermelho)</b>.<br><br>
+                <b>[ RATO ]</b> Mirar e Disparar &nbsp;|&nbsp; <b>[ W A S D ]</b> Mover
+            </p>
+            <button class="btn-start" id="btn-enter">Iniciar Combate</button>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="damage-overlay"></div>
+        <div id="msg-center">Mensagem</div>
+        
+        <div id="hud-top">
+            <div class="score-board">
+                <div class="score-team score-blue">
+                    <span>Equipa Azul</span>
+                    <strong id="score-blue">0</strong>
+                </div>
+                <div class="vs">VS</div>
+                <div class="score-team score-red">
+                    <span>Equipa Vermelha</span>
+                    <strong id="score-red">0</strong>
+                </div>
+            </div>
+        </div>
+        
+        <div id="center-ui">
+            <div id="crosshair">
+                <div class="ch-line ch-top"></div><div class="ch-line ch-bot"></div>
+                <div class="ch-line ch-left"></div><div class="ch-line ch-right"></div>
+            </div>
+        </div>
+
+        <div id="hud-bottom-left">
+            <div>Integridade do Jogador</div>
+            <div class="health-bar"><div class="health-fill" id="player-hp"></div></div>
+            <div style="margin-top:15px;">
+                <span class="key-hint">ESC</span> - Menu
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. ÁUDIO PROCEDURAL E FEEDBACK UI
+        // ==========================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const now = audioCtx.currentTime;
+            
+            if (type === 'shoot') {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'square'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+                gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'hit') {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(120, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now); osc.stop(now + 0.15);
+            } else if (type === 'error') {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.setValueAtTime(80, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            }
+        }
+
+        const msgCenter = document.getElementById('msg-center');
+        let msgTimeout;
+        function showMessage(text) {
+            msgCenter.innerText = text;
+            msgCenter.classList.add('show');
+            clearTimeout(msgTimeout);
+            msgTimeout = setTimeout(() => msgCenter.classList.remove('show'), 1500);
+        }
+
+        const crosshair = document.getElementById('crosshair');
+        function hitFeedback(type) {
+            crosshair.className = '';
+            void crosshair.offsetWidth; // force reflow
+            if(type === 'enemy') { crosshair.classList.add('hit'); playSound('hit'); }
+            else if(type === 'friendly') { crosshair.classList.add('friendly-fire'); playSound('error'); showMessage("FOGO AMIGO!"); }
+            setTimeout(() => crosshair.className = '', 200);
+        }
+
+        // ==========================================
+        // 2. CONFIGURAÇÃO DE EQUIPAS E CORES
+        // ==========================================
+        const TEAMS = {
+            BLUE: { id: 'blue', color: 0x00f3ff, name: 'Azul' },
+            RED: { id: 'red', color: 0xff007f, name: 'Vermelho' }
+        };
+
+        // ==========================================
+        // 3. ENGINE E CENÁRIO DA ARENA
+        // ==========================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#111116');
+        scene.fog = new THREE.FogExp2('#111116', 0.015);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(20, 50, 20); dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // Chão de cimento tático
+        const floorGeo = new THREE.PlaneGeometry(120, 120);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+
+        // Bunkers (Simétricos para o Skirmish)
+        const colliders = [];
+        function createBunker(x, z, w, h, d, colorHex) {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d).translate(0, h/2, 0), new THREE.MeshStandardMaterial({color: colorHex, roughness: 0.6}));
+            b.position.set(x, 0, z); b.castShadow = true; b.receiveShadow = true;
+            scene.add(b); colliders.push(b);
+        }
+        
+        // Coberturas Equipa Azul
+        createBunker(-15, 20, 8, 2.5, 1, 0x1a2a3a); createBunker(15, 20, 8, 2.5, 1, 0x1a2a3a);
+        createBunker(0, 10, 4, 2.5, 4, 0x1a2a3a);
+        
+        // Coberturas Equipa Vermelha
+        createBunker(-15, -20, 8, 2.5, 1, 0x3a1a2a); createBunker(15, -20, 8, 2.5, 1, 0x3a1a2a);
+        createBunker(0, -10, 4, 2.5, 4, 0x3a1a2a);
+
+        // ==========================================
+        // 4. JOGADOR (Equipa Azul)
+        // ==========================================
+        let isLocked = false;
+        const player = { team: TEAMS.BLUE.id, hp: 100, isDead: false };
+        const yawObj = new THREE.Group(); const pitchObj = new THREE.Group();
+        yawObj.position.set(0, 1.6, 35); // Spawn na base Azul
+        scene.add(yawObj); yawObj.add(pitchObj); pitchObj.add(camera);
+
+        const weapon = new THREE.Group();
+        const wBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.3), new THREE.MeshStandardMaterial({color: TEAMS.BLUE.color}));
+        const wBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3).rotateX(Math.PI/2), new THREE.MeshStandardMaterial({color: 0x111111}));
+        wBarrel.position.set(0, 0.02, -0.3);
+        const wHop = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), new THREE.MeshStandardMaterial({color: 0x111111}));
+        wHop.position.set(0, 0.1, -0.05); wHop.scale.set(0.8, 1, 1.2);
+        weapon.add(wBody, wBarrel, wHop); weapon.position.set(0.15, -0.15, -0.3); pitchObj.add(weapon);
+
+        document.getElementById('btn-enter').addEventListener('click', () => document.body.requestPointerLock());
+        document.addEventListener('pointerlockchange', () => {
+            isLocked = document.pointerLockElement === document.body;
+            document.getElementById('blocker').style.display = isLocked ? 'none' : 'flex';
+        });
+
+        let moveF = false, moveB = false, moveL = false, moveR = false;
+        document.addEventListener('mousemove', (e) => {
+            if(!isLocked || player.isDead) return;
+            yawObj.rotation.y -= e.movementX * 0.002; pitchObj.rotation.x -= e.movementY * 0.002;
+            pitchObj.rotation.x = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, pitchObj.rotation.x));
+        });
+
+        document.addEventListener('keydown', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = true; break; case 'KeyA': moveL = true; break;
+                case 'KeyS': moveB = true; break; case 'KeyD': moveR = true; break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = false; break; case 'KeyA': moveL = false; break;
+                case 'KeyS': moveB = false; break; case 'KeyD': moveR = false; break;
+            }
+        });
+
+        function damagePlayer() {
+            if(player.isDead) return;
+            player.hp -= 25;
+            document.getElementById('player-hp').style.width = Math.max(0, player.hp) + '%';
+            
+            const dmgUI = document.getElementById('damage-overlay');
+            if(player.hp <= 0) {
+                player.isDead = true;
+                dmgUI.classList.add('dead');
+                showMessage("ABATIDO! A REANIMAR...");
+                setTimeout(() => {
+                    player.hp = 100; player.isDead = false;
+                    document.getElementById('player-hp').style.width = '100%';
+                    yawObj.position.set((Math.random()-0.5)*20, 1.6, 35); // Respawn Base Azul
+                    dmgUI.classList.remove('dead');
+                }, 3000);
+            } else {
+                dmgUI.classList.add('hurt');
+                setTimeout(() => dmgUI.classList.remove('hurt'), 200);
+            }
+        }
+
+        // ==========================================
+        // 5. INTELIGÊNCIA ARTIFICIAL DE ESQUADRÃO
+        // ==========================================
+        const allBots = [];
+        let scores = { blue: 0, red: 0 };
+
+        class SquadBot {
+            constructor(teamDef, spawnX, spawnZ) {
+                this.team = teamDef.id;
+                this.teamColor = teamDef.color;
+                
+                this.mesh = new THREE.Group();
+                // Visual Elegante do Bot
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.9, 0.3).translate(0, 1.1, 0), new THREE.MeshStandardMaterial({color: this.teamColor, roughness: 0.7}));
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3).translate(0, 1.8, 0), new THREE.MeshStandardMaterial({color: 0x111111}));
+                
+                // Arma flutuante acompanhando
+                this.gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.5).translate(0.3, 1.2, -0.4), new THREE.MeshStandardMaterial({color: 0x333333}));
+                
+                // Hitbox identificadora para o Raycaster
+                body.userData = { isBot: true, owner: this };
+                head.userData = { isBot: true, owner: this };
+                
+                this.mesh.add(body, head, this.gun);
+                this.mesh.position.set(spawnX, 0, spawnZ);
+                
+                scene.add(this.mesh);
+                allBots.push(this);
+
+                this.hp = 100;
+                this.state = 'seek'; // seek (procura alvo), attack (atira), dead
+                this.target = null;
+                this.lastShot = 0;
+                this.spawnPoint = new THREE.Vector3(spawnX, 0, spawnZ);
+            }
+
+            // O Cérebro: Identificar inimigos (IFF)
+            findNearestEnemy() {
+                let nearest = null;
+                let minDist = Infinity;
+
+                // 1. Verifica os outros Bots
+                allBots.forEach(otherBot => {
+                    if (otherBot !== this && otherBot.team !== this.team && otherBot.hp > 0) {
+                        let d = this.mesh.position.distanceTo(otherBot.mesh.position);
+                        if (d < minDist) { minDist = d; nearest = { pos: otherBot.mesh.position.clone(), isPlayer: false, botRef: otherBot }; }
+                    }
+                });
+
+                // 2. Verifica o Jogador (Se eu for Vermelho, o jogador é inimigo Azul)
+                if (this.team === TEAMS.RED.id && !player.isDead) {
+                    let d = this.mesh.position.distanceTo(yawObj.position);
+                    if (d < minDist) { nearest = { pos: yawObj.position.clone(), isPlayer: true }; }
+                }
+
+                return nearest;
+            }
+
+            update(delta, time) {
+                if (this.hp <= 0) return;
+
+                this.target = this.findNearestEnemy();
+
+                if (!this.target) {
+                    // Sem inimigos, volta pra posição inicial
+                    this.state = 'seek';
+                    this.mesh.lookAt(this.spawnPoint.x, 0, this.spawnPoint.z);
+                    if(this.mesh.position.distanceTo(this.spawnPoint) > 2) this.mesh.translateZ(2 * delta);
+                    return;
+                }
+
+                const distToTarget = this.mesh.position.distanceTo(this.target.pos);
+
+                // Comportamento Tático
+                if (distToTarget > 15) {
+                    this.state = 'seek';
+                    this.mesh.lookAt(this.target.pos.x, 0, this.target.pos.pos);
+                    // Adiciona variação de evasão (Strafe) enquanto anda
+                    this.mesh.translateX(Math.sin(time + this.mesh.id) * 1.5 * delta); 
+                    this.mesh.translateZ(3.5 * delta); // Avança
+                } else {
+                    this.state = 'attack';
+                    this.mesh.lookAt(this.target.pos.x, 0, this.target.pos.z);
+                    // Apenas faz strafe (desvia) sem avançar
+                    this.mesh.translateX(Math.cos(time * 2 + this.mesh.id) * 2 * delta); 
+
+                    // Atirar
+                    if (time - this.lastShot > 1.0 + Math.random()*0.5) { // Cadência variada
+                        this.shoot(this.target.pos);
+                        this.lastShot = time;
+                    }
+                }
+            }
+
+            shoot(targetPos) {
+                // Efeito sonoro só se estiver perto do jogador (Otimização)
+                if(this.mesh.position.distanceTo(yawObj.position) < 30) playSound('shoot');
+                
+                const b = new THREE.Mesh(new THREE.SphereGeometry(0.06), new THREE.MeshBasicMaterial({color: this.teamColor}));
+                b.position.copy(this.mesh.position); b.position.y += 1.2;
+                
+                const dir = new THREE.Vector3().subVectors(targetPos, b.position).normalize();
+                dir.x += (Math.random()-0.5)*0.08; dir.y += (Math.random()-0.5)*0.08; // Imprecisão do Bot
+                
+                b.velocity = dir.multiplyScalar(1.8);
+                b.userData = { team: this.team, life: 0 };
+                projectiles.push(b); scene.add(b);
+            }
+
+            takeDamage(amount) {
+                if (this.hp <= 0) return;
+                this.hp -= amount;
+                
+                // Pisca a malha para branco ao levar tiro
+                this.mesh.children[0].material.color.setHex(0xffffff);
+                setTimeout(() => { if(this.hp > 0) this.mesh.children[0].material.color.setHex(this.teamColor); }, 100);
+
+                if (this.hp <= 0) {
+                    this.mesh.rotation.x = -Math.PI/2; // Cai
+                    
+                    // Adiciona Ponto para a Equipa que matou
+                    if(this.team === TEAMS.RED.id) { scores.blue++; document.getElementById('score-blue').innerText = scores.blue; }
+                    else { scores.red++; document.getElementById('score-red').innerText = scores.red; }
+
+                    // Respawn após 4 segundos
+                    setTimeout(() => {
+                        this.hp = 100;
+                        this.mesh.rotation.x = 0;
+                        this.mesh.children[0].material.color.setHex(this.teamColor);
+                        this.mesh.position.copy(this.spawnPoint);
+                        // Varia o spawn um pouco
+                        this.mesh.position.x += (Math.random()-0.5)*10;
+                    }, 4000);
+                }
+            }
+        }
+
+        // Criando os Esquadrões
+        // Aliados Azuis (Avançam contigo)
+        new SquadBot(TEAMS.BLUE, -8, 25);
+        new SquadBot(TEAMS.BLUE, 8, 25);
+
+        // Inimigos Vermelhos (Linha de defesa)
+        new SquadBot(TEAMS.RED, -10, -25);
+        new SquadBot(TEAMS.RED, 0, -30);
+        new SquadBot(TEAMS.RED, 10, -25);
+
+
+        // ==========================================
+        // 6. SISTEMA DE DISPARO DO JOGADOR E FÍSICA
+        // ==========================================
+        const projectiles = [];
+        let recoilTime = 0;
+
+        document.addEventListener('mousedown', (e) => {
+            if (!isLocked || e.button !== 0 || player.isDead) return;
+
+            playSound('shoot');
+            recoilTime = 0.1;
+
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.04), new THREE.MeshBasicMaterial({color: TEAMS.BLUE.color}));
+            camera.getWorldPosition(b.position);
+            const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+            b.position.add(dir.clone().multiplyScalar(0.5));
+            
+            b.velocity = dir.multiplyScalar(3.5);
+            // IMPORTANTE: Marcamos a bala com a nossa Equipa (Azul)
+            b.userData = { team: player.team, life: 0 }; 
+            
+            projectiles.push(b); scene.add(b);
+        });
+
+        // ==========================================
+        // 7. GAME LOOP PRINCIPAL
+        // ==========================================
+        const clock = new THREE.Clock();
+        const raycaster = new THREE.Raycaster();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+            const time = clock.getElapsedTime();
+
+            if (isLocked && !player.isDead) {
+                // Movimento Jogador
+                const spd = 20.0;
+                let dz = Number(moveF) - Number(moveB); let dx = Number(moveR) - Number(moveL);
+                const fwd = new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                const rgt = new THREE.Vector3(1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                
+                yawObj.position.add(fwd.multiplyScalar(dz * spd * delta));
+                yawObj.position.add(rgt.multiplyScalar(dx * spd * delta));
+                
+                // Limites
+                if(yawObj.position.x > 50) yawObj.position.x = 50; if(yawObj.position.x < -50) yawObj.position.x = -50;
+                if(yawObj.position.z > 50) yawObj.position.z = 50; if(yawObj.position.z < -50) yawObj.position.z = -50;
+            }
+
+            // Atualiza Animação da Arma do Jogador
+            if (recoilTime > 0) {
+                weapon.position.z = -0.3 + (recoilTime * 0.8); weapon.rotation.x = recoilTime;
+                recoilTime -= delta;
+            } else { weapon.position.z = -0.3; weapon.rotation.x = 0; }
+
+            // Atualiza Todos os Bots (A Mágica do Esquadrão acontece aqui)
+            allBots.forEach(b => b.update(delta, time));
+
+            // FÍSICA E COLISÃO DAS BOLINHAS (O SISTEMA IFF)
+            // Pegamos todas as hitboxes válidas
+            const validTargets = allBots.map(b => b.mesh.children[0]); // Pega os corpos
+
+            for(let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.userData.life++;
+                p.velocity.y -= 0.015; // Gravidade
+                
+                const nextPos = p.position.clone().add(p.velocity);
+                const dist = p.position.distanceTo(nextPos);
+                
+                raycaster.set(p.position, p.velocity.clone().normalize());
+                // Checa colisão com Bunkers(colliders) e Bots(validTargets)
+                const hitArr = raycaster.intersectObjects([...colliders, ...validTargets], false);
+
+                let hit = false;
+                
+                if (hitArr.length > 0 && hitArr[0].distance <= dist) {
+                    hit = true;
+                    const impact = hitArr[0].object;
+
+                    // 1. Bolinha bateu num Bot
+                    if (impact.userData.isBot) {
+                        const targetBot = impact.userData.owner;
+                        
+                        // REGRA IFF: Verifica se a bolinha e o bot são de equipas diferentes
+                        if (p.userData.team !== targetBot.team) {
+                            // Dano Inimigo Válido!
+                            targetBot.takeDamage(34);
+                            if(p.userData.team === player.team) hitFeedback('enemy'); // Jogador acertou
+                        } else {
+                            // FOGO AMIGO!
+                            if(p.userData.team === player.team) hitFeedback('friendly'); // Jogador fez asneira
+                        }
+                    }
+                }
+
+                // 2. Bolinha (sendo inimiga) bateu no Jogador
+                if (!hit && p.userData.team === TEAMS.RED.id && !player.isDead) {
+                    // Checagem de distância simples
+                    if (p.position.distanceTo(yawObj.position) < 1.2) {
+                        hit = true;
+                        damagePlayer();
+                    }
+                }
+
+                if (p.position.y < 0) hit = true;
+
+                if (hit || p.userData.life > 80) {
+                    scene.remove(p); p.geometry.dispose(); p.material.dispose();
+                    projectiles.splice(i, 1);
+                } else {
+                    p.position.copy(nextPos);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        animate();
+    </script>
+</body>
+</html>

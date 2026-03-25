@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paint Killers - Capture the Flag</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050507; font-family: 'Outfit', sans-serif; color: white; user-select: none; }
+        canvas { display: block; }
+
+        /* UI Layer */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; z-index: 10; }
+        
+        /* Mira */
+        #center-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
+        #crosshair { width: 4px; height: 4px; background-color: #00f3ff; border-radius: 50%; box-shadow: 0 0 8px #00f3ff; position: relative; transition: background-color 0.2s; }
+        .ch-line { position: absolute; background-color: rgba(0, 243, 255, 0.7); transition: background-color 0.2s; }
+        .ch-top { width: 2px; height: 10px; top: -15px; left: 1px; }
+        .ch-bot { width: 2px; height: 10px; bottom: -15px; left: 1px; }
+        .ch-left { width: 10px; height: 2px; top: 1px; left: -15px; }
+        .ch-right { width: 10px; height: 2px; top: 1px; right: -15px; }
+        
+        /* Indicador de Carregar Bandeira */
+        .carrying-flag #crosshair { background-color: #ff007f; box-shadow: 0 0 15px #ff007f;}
+        .carrying-flag .ch-line { background-color: #ff007f;}
+
+        /* Mensagens de Ação Central */
+        #msg-center { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 2rem; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-shadow: 0 0 20px rgba(0,0,0,0.8); opacity: 0; transition: opacity 0.3s, transform 0.3s; color: #fff;}
+        #msg-center.show { opacity: 1; transform: translate(-50%, -40%); }
+
+        /* Dano HUD */
+        #damage-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 0px rgba(255,0,0,0); transition: box-shadow 0.1s; pointer-events: none;}
+        #damage-overlay.hurt { box-shadow: inset 0 0 150px rgba(255, 0, 50, 0.8); }
+        #damage-overlay.dead { box-shadow: inset 0 0 300px rgba(255, 0, 0, 1); background: rgba(255,0,0,0.3); transition: box-shadow 0s, background 0s;}
+
+        /* Placar e Tempo */
+        #hud-top { padding: 20px; display: flex; justify-content: space-between; width: 100%; box-sizing: border-box; }
+        .score-board { background: rgba(5,5,7,0.8); border: 1px solid rgba(255,255,255,0.1); padding: 15px 30px; border-radius: 8px; display: flex; gap: 40px; align-items: center; backdrop-filter: blur(10px); }
+        .score-team { display: flex; flex-direction: column; align-items: center; position: relative;}
+        .score-team span { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 2px; }
+        .score-team strong { font-size: 2.5rem; font-weight: 900; line-height: 1; }
+        .score-blue { color: #00f3ff; }
+        .score-red { color: #ff007f; }
+        
+        .flag-status { font-size: 0.7rem; padding: 2px 6px; border-radius: 3px; margin-top: 5px; font-weight: bold; text-transform: uppercase;}
+        .flag-safe { background: rgba(255,255,255,0.2); color: #fff; }
+        .flag-stolen { background: rgba(255,0,0,0.8); color: #fff; animation: blink 1s infinite;}
+        
+        .timer { font-size: 2rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center;}
+        .timer span { font-size: 0.7rem; color: #aaa; letter-spacing: 2px; text-transform: uppercase;}
+
+        /* Munição */
+        #hud-bottom-right { position: absolute; bottom: 30px; right: 30px; text-align: right; background: rgba(5,5,7,0.8); border: 1px solid rgba(0, 243, 255, 0.3); padding: 15px 25px; border-radius: 8px; backdrop-filter: blur(10px);}
+        .ammo-count { font-size: 3.5rem; font-weight: 900; color: #00f3ff; line-height: 0.9; text-shadow: 0 0 15px rgba(0,243,255,0.4); }
+        .ammo-count.low { color: #ff3333; text-shadow: 0 0 15px rgba(255,51,51,0.4); }
+        .pod-count { font-size: 1rem; color: #aaa; text-transform: uppercase; letter-spacing: 2px; margin-top: 5px; display: flex; justify-content: flex-end; gap: 5px;}
+        .pod-icon { width: 10px; height: 25px; background: #00f3ff; border-radius: 2px; opacity: 0.8; }
+        .pod-icon.empty { background: #333; opacity: 0.5; }
+        .reload-warning { color: #dfff00; font-size: 0.9rem; font-weight: bold; margin-top: 10px; opacity: 0; transition: opacity 0.2s; text-transform: uppercase; letter-spacing: 1px;}
+        .reload-warning.active { opacity: 1; animation: blink 1s infinite; }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* Menu Start */
+        #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(5,5,7,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; z-index: 50; }
+        .menu-box { text-align: center; max-width: 600px; }
+        .menu-box h1 { font-size: 4rem; color: #fff; margin-bottom: 0; text-transform: uppercase; letter-spacing: -1px; }
+        .menu-box h1 span { color: transparent; -webkit-text-stroke: 2px #ff007f; }
+        .mode-badge { display: inline-block; background: #dfff00; color: #111; font-weight: 900; padding: 5px 15px; border-radius: 20px; font-size: 1rem; margin-top: -10px; letter-spacing: 2px; text-transform: uppercase;}
+        
+        .btn-start { background: #00f3ff; color: #111; border: none; padding: 15px 40px; font-size: 1.2rem; font-weight: 900; text-transform: uppercase; cursor: pointer; border-radius: 4px; margin-top: 30px; letter-spacing: 2px; transition: 0.2s; font-family: 'Outfit'; }
+        .btn-start:hover { transform: scale(1.05); background: #fff; box-shadow: 0 0 20px rgba(0,243,255,0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="blocker">
+        <div class="menu-box">
+            <h1>Paint <span>Killers</span></h1>
+            <div class="mode-badge">Capture The Flag</div>
+            <p style="color: #888; font-size: 1.1rem; line-height: 1.6; margin-top: 20px;">
+                Invade a base inimiga, rouba a bandeira vermelha e trá-la para a tua base!<br>
+                Morte com 1 tiro. Fica atento ao Bot.<br><br>
+                <b>[ RATO ]</b> Disparar &nbsp;|&nbsp; <b>[ W A S D ]</b> Mover<br>
+                <b>[ R ]</b> Recarregar Munição
+            </p>
+            <button class="btn-start" id="btn-enter">Iniciar Partida</button>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="damage-overlay"></div>
+        <div id="msg-center">Mensagem</div>
+        
+        <div id="hud-top">
+            <div class="score-board">
+                <div class="score-team score-blue">
+                    <span>Equipa Azul</span>
+                    <strong id="score-player">0</strong>
+                    <div id="status-flag-blue" class="flag-status flag-safe">Bandeira Segura</div>
+                </div>
+                <div class="timer">
+                    <span>Tempo Restante</span>
+                    <div id="match-timer">05:00</div>
+                </div>
+                <div class="score-team score-red">
+                    <span>Inimigo Vermelho</span>
+                    <strong id="score-enemy">0</strong>
+                    <div id="status-flag-red" class="flag-status flag-safe">Bandeira Segura</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="center-ui">
+            <div id="crosshair">
+                <div class="ch-line ch-top"></div><div class="ch-line ch-bot"></div>
+                <div class="ch-line ch-left"></div><div class="ch-line ch-right"></div>
+            </div>
+        </div>
+
+        <div id="hud-bottom-right">
+            <div class="ammo-count" id="ammo-display">50</div>
+            <div class="pod-count" id="pod-display">
+                <div class="pod-icon"></div><div class="pod-icon"></div><div class="pod-icon"></div>
+            </div>
+            <div class="reload-warning" id="reload-warning">Prima 'R' para recarregar</div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. ÁUDIO PROCEDURAL (Synthesizer Melhorado)
+        // ==========================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const now = audioCtx.currentTime;
+            
+            if (type === 'shoot') {
+                // Melhoria Sonora: Paintball Marker "Puff" (White Noise + Low Thump)
+                // 1. Ruído Branco (O sopro de ar)
+                const bufferSize = audioCtx.sampleRate * 0.1;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const noiseFilter = audioCtx.createBiquadFilter();
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.value = 1000;
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.5, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                
+                noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(audioCtx.destination);
+                noise.start(now);
+
+                // 2. Golpe grave (O ferrolho batendo)
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(250, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.05);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                
+                osc.start(now); osc.stop(now + 0.1);
+
+            } else if (type === 'empty') {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(800, now);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            } else if (type === 'reload') {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(400, now + 0.2);
+                gain.gain.setValueAtTime(0.0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.1); gain.gain.linearRampToValueAtTime(0.0, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'hit') {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now); osc.stop(now + 0.15);
+            } else if (type === 'score') {
+                // Som de captura de bandeira
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'square'; 
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.setValueAtTime(600, now + 0.1);
+                osc.frequency.setValueAtTime(800, now + 0.2);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            }
+        }
+
+        // Sistema de Mensagens Visuais
+        function showMessage(text, color = '#fff') {
+            const msgEl = document.getElementById('msg-center');
+            msgEl.innerText = text;
+            msgEl.style.color = color;
+            msgEl.classList.add('show');
+            setTimeout(() => msgEl.classList.remove('show'), 2000);
+        }
+
+        // ==========================================
+        // 2. ENGINE E CENÁRIO (Arena CTF)
+        // ==========================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#0a0a10');
+        scene.fog = new THREE.FogExp2('#0a0a10', 0.015);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 50, 20); dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // Chão de Grelha
+        const gridCanvas = document.createElement('canvas'); gridCanvas.width=512; gridCanvas.height=512;
+        const ctx = gridCanvas.getContext('2d'); ctx.fillStyle='#111'; ctx.fillRect(0,0,512,512);
+        ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.strokeRect(0,0,512,512);
+        const gridTex = new THREE.CanvasTexture(gridCanvas); gridTex.wrapS = gridTex.wrapT = THREE.RepeatWrapping; gridTex.repeat.set(20,20);
+        
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.8 }));
+        floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+
+        // Obstáculos (Bunkers) Simétricos para CTF
+        const colliders = [];
+        function createBunker(x, z, rot) {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(4, 2.5, 1).translate(0, 1.25, 0), new THREE.MeshStandardMaterial({color: 0x222233}));
+            b.position.set(x, 0, z); b.rotation.y = rot; b.castShadow = true; b.receiveShadow = true;
+            scene.add(b); colliders.push(b);
+        }
+        // Centro
+        createBunker(-10, 0, Math.PI/4); createBunker(10, 0, -Math.PI/4); createBunker(0, 0, 0);
+        // Defesas Base Azul
+        createBunker(-8, 20, Math.PI/8); createBunker(8, 20, -Math.PI/8);
+        // Defesas Base Vermelha
+        createBunker(-8, -20, -Math.PI/8); createBunker(8, -20, Math.PI/8);
+
+        // ==========================================
+        // 3. SISTEMA DE BANDEIRAS (CTF)
+        // ==========================================
+        const baseBluePos = new THREE.Vector3(0, 0, 40);
+        const baseRedPos = new THREE.Vector3(0, 0, -40);
+
+        function createBaseMarker(pos, colorHex) {
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(3, 0.2, 8, 24).rotateX(Math.PI/2),
+                new THREE.MeshBasicMaterial({color: colorHex})
+            );
+            ring.position.copy(pos); ring.position.y = 0.1;
+            scene.add(ring);
+        }
+        createBaseMarker(baseBluePos, 0x00f3ff);
+        createBaseMarker(baseRedPos, 0xff007f);
+
+        function createFlag(colorHex) {
+            const flagGrp = new THREE.Group();
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3).translate(0, 1.5, 0), new THREE.MeshStandardMaterial({color: 0x888888}));
+            const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1).translate(0.75, 2.5, 0), new THREE.MeshBasicMaterial({color: colorHex, side: THREE.DoubleSide}));
+            flagGrp.add(pole, cloth);
+            flagGrp.castShadow = true;
+            scene.add(flagGrp);
+            return flagGrp;
+        }
+
+        const flagBlue = createFlag(0x00f3ff); flagBlue.position.copy(baseBluePos);
+        const flagRed = createFlag(0xff007f); flagRed.position.copy(baseRedPos);
+
+        let playerHasFlag = false;
+        let botHasFlag = false;
+
+        function updateFlagUI() {
+            const uiBlue = document.getElementById('status-flag-blue');
+            const uiRed = document.getElementById('status-flag-red');
+
+            if (botHasFlag) {
+                uiBlue.innerText = "ROUBADA!"; uiBlue.className = "flag-status flag-stolen";
+            } else {
+                uiBlue.innerText = "NA BASE"; uiBlue.className = "flag-status flag-safe";
+            }
+
+            if (playerHasFlag) {
+                uiRed.innerText = "COMIGO!"; uiRed.className = "flag-status flag-stolen";
+                document.body.classList.add('carrying-flag');
+            } else {
+                uiRed.innerText = "NA BASE"; uiRed.className = "flag-status flag-safe";
+                document.body.classList.remove('carrying-flag');
+            }
+        }
+
+        // ==========================================
+        // 4. JOGADOR E MUNIÇÃO
+        // ==========================================
+        let isLocked = false;
+        const yawObj = new THREE.Group(); const pitchObj = new THREE.Group();
+        yawObj.position.copy(baseBluePos); yawObj.position.y = 1.6; // Spawn do jogador
+        scene.add(yawObj); yawObj.add(pitchObj); pitchObj.add(camera);
+
+        const weapon = new THREE.Group();
+        const wBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.3), new THREE.MeshStandardMaterial({color: 0x00f3ff}));
+        const wBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3).rotateX(Math.PI/2), new THREE.MeshStandardMaterial({color: 0x111111}));
+        wBarrel.position.set(0, 0.02, -0.3);
+        const wHop = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), new THREE.MeshStandardMaterial({color: 0x111111}));
+        wHop.position.set(0, 0.1, -0.05); wHop.scale.set(0.8, 1, 1.2);
+        weapon.add(wBody, wBarrel, wHop); weapon.position.set(0.15, -0.15, -0.3); pitchObj.add(weapon);
+
+        document.getElementById('btn-enter').addEventListener('click', () => document.body.requestPointerLock());
+        document.addEventListener('pointerlockchange', () => {
+            isLocked = document.pointerLockElement === document.body;
+            document.getElementById('blocker').style.display = isLocked ? 'none' : 'flex';
+        });
+
+        let moveF = false, moveB = false, moveL = false, moveR = false;
+        document.addEventListener('mousemove', (e) => {
+            if(!isLocked) return;
+            yawObj.rotation.y -= e.movementX * 0.002; pitchObj.rotation.x -= e.movementY * 0.002;
+            pitchObj.rotation.x = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, pitchObj.rotation.x));
+        });
+
+        const MAX_AMMO = 50;
+        let pAmmo = MAX_AMMO;
+        let pPods = 3;
+        let isReloading = false;
+
+        function updateAmmoUI() {
+            const ammoUI = document.getElementById('ammo-display');
+            ammoUI.innerText = pAmmo;
+            if(pAmmo <= 10) { ammoUI.classList.add('low'); document.getElementById('reload-warning').classList.add('active'); }
+            else { ammoUI.classList.remove('low'); document.getElementById('reload-warning').classList.remove('active'); }
+            
+            const podsContainer = document.getElementById('pod-display');
+            podsContainer.innerHTML = '';
+            for(let i=0; i<3; i++) {
+                const p = document.createElement('div'); p.className = 'pod-icon' + (i >= pPods ? ' empty' : '');
+                podsContainer.appendChild(p);
+            }
+        }
+        updateAmmoUI();
+
+        document.addEventListener('keydown', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = true; break; case 'KeyA': moveL = true; break;
+                case 'KeyS': moveB = true; break; case 'KeyD': moveR = true; break;
+                case 'KeyR':
+                    if(!isReloading && pPods > 0 && pAmmo < MAX_AMMO) {
+                        isReloading = true; playSound('reload');
+                        document.getElementById('reload-warning').innerText = "A RECARREGAR...";
+                        setTimeout(() => {
+                            pAmmo = MAX_AMMO; pPods--; isReloading = false;
+                            document.getElementById('reload-warning').innerText = "Prima 'R' para recarregar";
+                            updateAmmoUI();
+                        }, 1200); 
+                    }
+                    break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch(e.code) {
+                case 'KeyW': moveF = false; break; case 'KeyA': moveL = false; break;
+                case 'KeyS': moveB = false; break; case 'KeyD': moveR = false; break;
+            }
+        });
+
+        function handlePlayerDeath() {
+            const dmgUI = document.getElementById('damage-overlay');
+            dmgUI.classList.add('dead');
+            showMessage("MORRESTE!", "#ff3333");
+            setTimeout(() => dmgUI.classList.remove('dead'), 1000);
+
+            // Dropa a bandeira que estava carregando
+            if(playerHasFlag) {
+                playerHasFlag = false;
+                flagRed.position.copy(baseRedPos); // Auto-return fast pace
+                showMessage("BANDEIRA PERDIDA!", "#ff3333");
+                updateFlagUI();
+            }
+
+            // Respawn
+            yawObj.position.copy(baseBluePos);
+            yawObj.position.y = 1.6;
+            pAmmo = MAX_AMMO;
+            pPods = 3;
+            updateAmmoUI();
+        }
+
+        // ==========================================
+        // 5. INTELIGÊNCIA ARTIFICIAL CTF (O BOT)
+        // ==========================================
+        class EnemyBot {
+            constructor() {
+                this.mesh = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.7).translate(0, 0.85, 0), new THREE.MeshStandardMaterial({color: 0xff007f}));
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.25).translate(0, 1.9, 0), new THREE.MeshStandardMaterial({color: 0x111111}));
+                this.mesh.add(body, head);
+                this.mesh.position.copy(baseRedPos);
+                scene.add(this.mesh);
+
+                this.state = 'seek_flag'; // seek_flag, return_flag, combat
+                this.lastShot = 0;
+                this.hp = 100;
+            }
+
+            update(delta, playerPos, time) {
+                if(this.hp <= 0) return;
+
+                const distToPlayer = this.mesh.position.distanceTo(playerPos);
+                
+                // Determina o Alvo de Navegação
+                let targetNav = baseBluePos; // Padrão: Ir buscar a bandeira azul
+                if (botHasFlag) {
+                    targetNav = baseRedPos; // Se tem a bandeira, voltar pra base vermelha
+                }
+
+                // Movimento do Bot
+                this.mesh.lookAt(targetNav.x, this.mesh.position.y, targetNav.z);
+                this.mesh.translateZ(4 * delta); // Corre rápido!
+
+                // Combate em movimento
+                if (distToPlayer < 30) {
+                    // Olha ligeiramente pro player só pra atirar, mas continua indo pro objetivo
+                    const rotYBefore = this.mesh.rotation.y;
+                    this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
+                    
+                    if (time - this.lastShot > 0.8) {
+                        this.shoot(playerPos);
+                        this.lastShot = time;
+                    }
+                    
+                    // Restaura rotação pra não parar de correr pro objetivo
+                    this.mesh.rotation.y = rotYBefore; 
+                }
+
+                // Lógica CTF do Bot
+                // Bot Pega a Bandeira Azul
+                if (!botHasFlag && this.mesh.position.distanceTo(baseBluePos) < 2 && !playerHasFlag) {
+                    botHasFlag = true;
+                    showMessage("A TUA BANDEIRA FOI ROUBADA!", "#ff3333");
+                    updateFlagUI();
+                }
+                
+                // Bot Marca Ponto
+                if (botHasFlag && this.mesh.position.distanceTo(baseRedPos) < 2) {
+                    botHasFlag = false;
+                    flagBlue.position.copy(baseBluePos); // Reseta a bandeira
+                    scoreEnemy++;
+                    document.getElementById('score-enemy').innerText = scoreEnemy;
+                    playSound('score');
+                    showMessage("INIMIGO PONTUOU!", "#ff3333");
+                    updateFlagUI();
+                }
+            }
+
+            shoot(target) {
+                playSound('shoot');
+                const b = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({color: 0xff007f}));
+                b.position.copy(this.mesh.position); b.position.y += 1.2;
+                
+                const dir = new THREE.Vector3().subVectors(target, b.position).normalize();
+                dir.x += (Math.random()-0.5)*0.08; dir.y += (Math.random()-0.5)*0.08;
+                
+                b.velocity = dir.multiplyScalar(2.0); // Tiro do bot rápido
+                b.userData = { isEnemyProj: true, life: 0 };
+                projectiles.push(b); scene.add(b);
+            }
+
+            die() {
+                this.hp = 0;
+                this.mesh.rotation.x = -Math.PI/2; 
+                
+                if (botHasFlag) {
+                    botHasFlag = false;
+                    flagBlue.position.copy(baseBluePos); // Devolve bandeira azul à base
+                    showMessage("RECUPERASTE A BANDEIRA!", "#00f3ff");
+                    updateFlagUI();
+                }
+                
+                setTimeout(() => {
+                    this.hp = 100;
+                    this.mesh.rotation.x = 0;
+                    this.mesh.position.copy(baseRedPos); // Respawn na base dele
+                }, 3000);
+            }
+        }
+
+        const bot = new EnemyBot();
+        colliders.push(bot.mesh);
+
+        // ==========================================
+        // 6. SISTEMA DE DISPARO E FÍSICA
+        // ==========================================
+        const projectiles = [];
+        let recoilTime = 0;
+        let scorePlayer = 0;
+        let scoreEnemy = 0;
+
+        document.addEventListener('mousedown', (e) => {
+            if (!isLocked || e.button !== 0 || isReloading) return;
+
+            if (pAmmo > 0) {
+                pAmmo--; updateAmmoUI();
+                playSound('shoot');
+                recoilTime = 0.1;
+
+                const b = new THREE.Mesh(new THREE.SphereGeometry(0.03), new THREE.MeshBasicMaterial({color: 0x00f3ff}));
+                camera.getWorldPosition(b.position);
+                const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+                b.position.add(dir.clone().multiplyScalar(0.5));
+                b.velocity = dir.multiplyScalar(4.0); // Tiro mais veloz
+                b.userData = { isPlayerProj: true, life: 0 };
+                
+                projectiles.push(b); scene.add(b);
+            } else {
+                playSound('empty');
+            }
+        });
+
+        // ==========================================
+        // 7. GAME LOOP E REGRAS CTF
+        // ==========================================
+        const clock = new THREE.Clock();
+        const playerBox = new THREE.Box3();
+
+        let matchTime = 300; 
+        setInterval(() => {
+            if(isLocked && matchTime > 0) {
+                matchTime--;
+                const m = Math.floor(matchTime/60).toString().padStart(2,'0');
+                const s = (matchTime%60).toString().padStart(2,'0');
+                document.getElementById('match-timer').innerText = `${m}:${s}`;
+            }
+        }, 1000);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+            const time = clock.getElapsedTime();
+
+            if (isLocked) {
+                // Movimento Jogador
+                const spd = 20.0;
+                let dz = Number(moveF) - Number(moveB); let dx = Number(moveR) - Number(moveL);
+                const fwd = new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                const rgt = new THREE.Vector3(1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                
+                const nextPos = yawObj.position.clone()
+                    .add(fwd.multiplyScalar(dz * spd * delta))
+                    .add(rgt.multiplyScalar(dx * spd * delta));
+                
+                playerBox.setFromCenterAndSize(new THREE.Vector3(nextPos.x, 1, nextPos.z), new THREE.Vector3(1, 2, 1));
+                let col = false;
+                for(let b of colliders) {
+                    if(b !== bot.mesh) {
+                        b.geometry.computeBoundingBox();
+                        const bBox = new THREE.Box3().copy(b.geometry.boundingBox).applyMatrix4(b.matrixWorld);
+                        if(playerBox.intersectsBox(bBox)) { col = true; break; }
+                    }
+                }
+                if(!col) { yawObj.position.x = nextPos.x; yawObj.position.z = nextPos.z; }
+
+                // Limites
+                if(yawObj.position.x > 45) yawObj.position.x = 45; if(yawObj.position.x < -45) yawObj.position.x = -45;
+                if(yawObj.position.z > 45) yawObj.position.z = 45; if(yawObj.position.z < -45) yawObj.position.z = -45;
+
+                // --- LÓGICA CTF DO JOGADOR ---
+                // Pegar Bandeira Inimiga
+                if (!playerHasFlag && yawObj.position.distanceTo(baseRedPos) < 3 && !botHasFlag) {
+                    playerHasFlag = true;
+                    playSound('score'); // Usando o som de score para aviso de pega
+                    showMessage("PEGOU A BANDEIRA INIMIGA!", "#00f3ff");
+                    updateFlagUI();
+                }
+
+                // Entregar a Bandeira e Pontuar
+                if (playerHasFlag && yawObj.position.distanceTo(baseBluePos) < 3) {
+                    playerHasFlag = false;
+                    flagRed.position.copy(baseRedPos); // Reseta a bandeira inimiga
+                    scorePlayer++;
+                    document.getElementById('score-player').innerText = scorePlayer;
+                    playSound('score');
+                    showMessage("PONTO PARA A TUA EQUIPA!", "#00f3ff");
+                    updateFlagUI();
+                }
+            }
+
+            // Atualiza Posições Visuais das Bandeiras Atadas
+            if (playerHasFlag) {
+                // Fica a flutuar nas costas do jogador
+                const backOffset = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0,1,0), yawObj.rotation.y);
+                flagRed.position.copy(yawObj.position).add(backOffset);
+                flagRed.position.y += 1;
+            }
+            if (botHasFlag) {
+                flagBlue.position.copy(bot.mesh.position);
+                flagBlue.position.y += 1;
+            }
+
+            // Bot Update
+            bot.update(delta, yawObj.position, time);
+
+            // Animação Arma
+            if (recoilTime > 0) {
+                weapon.position.z = -0.3 + (recoilTime * 0.5); weapon.rotation.x = recoilTime;
+                recoilTime -= delta;
+            } else { weapon.position.z = -0.3; weapon.rotation.x = 0; }
+
+            // Balística
+            for(let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.userData.life++;
+                p.velocity.y -= 0.02; // Gravidade
+                p.position.add(p.velocity);
+
+                let hit = false;
+                
+                // Jogador acerta no Bot
+                if (p.userData.isPlayerProj && bot.hp > 0) {
+                    const botDist = p.position.distanceTo(new THREE.Vector3(bot.mesh.position.x, 1.0, bot.mesh.position.z));
+                    if (botDist < 0.8) {
+                        hit = true;
+                        playSound('hit');
+                        bot.die();
+                    }
+                }
+                
+                // Bot acerta no Jogador (1-HIT KILL)
+                if (p.userData.isEnemyProj) {
+                    const pDist = p.position.distanceTo(yawObj.position);
+                    if (pDist < 1.0) {
+                        hit = true;
+                        playSound('hit');
+                        handlePlayerDeath();
+                    }
+                }
+
+                if (p.position.y < 0) hit = true;
+
+                if (hit || p.userData.life > 100) {
+                    scene.remove(p); p.geometry.dispose(); p.material.dispose();
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        animate();
+    </script>
+</body>
+</html>
