@@ -1,5 +1,3 @@
-import { MenuScene } from './scenes/menuScene.js';
-
 class GameManager {
     constructor() {
         this.appContainer = document.getElementById('app');

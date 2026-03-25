@@ -1,4 +1,4 @@
-export class MenuScene {
+class MenuScene {
     constructor(gameManager) {
         this.gameManager = gameManager;
         this.container = null;

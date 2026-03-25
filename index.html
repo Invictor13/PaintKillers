@@ -16,7 +16,9 @@
     <!-- Utilizando a versão r128 como base comum -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- Ponto de Entrada do SPA -->
-    <script type="module" src="js/main.js"></script>
+    <!-- Ponto de Entrada do SPA (Sem ES6 Modules para rodar via file://) -->
+    <script src="js/store.js"></script>
+    <script src="js/scenes/menuScene.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>

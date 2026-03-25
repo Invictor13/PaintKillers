@@ -46,4 +46,4 @@ class GameStore {
     }
 }
 
-export const Store = new GameStore();
+window.Store = new GameStore();
