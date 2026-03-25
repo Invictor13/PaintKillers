@@ -52,6 +52,9 @@ class DesertScene {
 
         window.getTerrainHeight = this.getTerrainHeight.bind(this);
 
+
+
+
         this.player = new window.Player(this.scene, this.camera);
         if (window.Store && window.Store.state && window.Store.state.playerColor) {
             this.player.setColor(window.Store.state.playerColor);
@@ -63,10 +66,44 @@ class DesertScene {
         window.AppProjectileManager = this.projectileManager;
         window.AppBots = this.bots;
 
-        // Spawn Bots
+        // Base positions for teams
+        this.basePositions = {
+            player: new THREE.Vector3(-this.ARENA_LENGTH/2 + 10, 0, 0),
+            enemy: new THREE.Vector3(this.ARENA_LENGTH/2 - 10, 0, 0)
+        };
+
+        // Adjust player start position to base
+        this.player.yawObject.position.set(this.basePositions.player.x, this.getTerrainHeight(this.basePositions.player.x, this.basePositions.player.z) + 1.6, this.basePositions.player.z);
+        this.player.yawObject.lookAt(0, this.player.yawObject.position.y, 0);
+
+        // Instantiate Flags
+        if (window.Flag) {
+            let bY = this.getTerrainHeight(this.basePositions.player.x, this.basePositions.player.z);
+            let rY = this.getTerrainHeight(this.basePositions.enemy.x, this.basePositions.enemy.z);
+
+            const blueFlag = new window.Flag(this.scene, 'blue', new THREE.Vector3(this.basePositions.player.x, bY, this.basePositions.player.z), 0x00f3ff);
+            const redFlag = new window.Flag(this.scene, 'red', new THREE.Vector3(this.basePositions.enemy.x, rY, this.basePositions.enemy.z), 0xff007f);
+
+            this.gameManager.registerBases(this.basePositions.player, this.basePositions.enemy);
+            this.gameManager.registerFlag(blueFlag);
+            this.gameManager.registerFlag(redFlag);
+
+            this.gameManager.addUpdatable(blueFlag);
+            this.gameManager.addUpdatable(redFlag);
+        }
+
+        // Spawn Bots (Allies and Enemies)
         if (window.Bot) {
-            for(let i=0; i<3; i++) {
-                const b = new window.Bot(this.scene, this.shootables);
+            // Allies
+            for(let i=0; i<2; i++) {
+                const b = new window.Bot(this.scene, this.shootables, false);
+                b.meshGroup.position.set(this.basePositions.player.x + (Math.random()-0.5)*10, 20, this.basePositions.player.z + (Math.random()-0.5)*10);
+                this.bots.push(b);
+            }
+            // Enemies
+            for(let i=0; i<4; i++) {
+                const b = new window.Bot(this.scene, this.shootables, true);
+                b.meshGroup.position.set(this.basePositions.enemy.x + (Math.random()-0.5)*10, 20, this.basePositions.enemy.z + (Math.random()-0.5)*10);
                 this.bots.push(b);
             }
         }
@@ -82,7 +119,41 @@ class DesertScene {
 
         window.updateScoreUI = (score) => {
             const el = document.getElementById('score-display');
-            if (el) el.innerText = "PONTUAÇÃO: " + score;
+            if (el) el.innerText = "PONTOS: " + score;
+        };
+
+        window.updateTeamScoreUI = (blue, red) => {
+            const elBlue = document.getElementById('score-blue');
+            const elRed = document.getElementById('score-red');
+            if (elBlue) elBlue.innerText = blue;
+            if (elRed) elRed.innerText = red;
+        };
+
+        window.showCTFMessage = (msg, isWarning) => {
+            const el = document.getElementById('ctf-message');
+            if (el) {
+                el.innerText = msg;
+                el.style.color = isWarning ? '#ff007f' : '#00f3ff';
+                el.style.opacity = 1;
+                setTimeout(() => el.style.opacity = 0, 3000);
+            }
+        };
+
+        window.updateTeamScoreUI = (blue, red) => {
+            const elBlue = document.getElementById('score-blue');
+            const elRed = document.getElementById('score-red');
+            if (elBlue) elBlue.innerText = blue;
+            if (elRed) elRed.innerText = red;
+        };
+
+        window.showCTFMessage = (msg, isWarning) => {
+            const el = document.getElementById('ctf-message');
+            if (el) {
+                el.innerText = msg;
+                el.style.color = isWarning ? '#ff007f' : '#00f3ff';
+                el.style.opacity = 1;
+                setTimeout(() => el.style.opacity = 0, 3000);
+            }
         };
 
         window.triggerHitMarker = (isHead) => {
@@ -121,7 +192,20 @@ class DesertScene {
         </div>
 
         <div id="ui-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; z-index: 10;">
-            <div id="hud-top" style="padding: 25px; text-align: center;"><p id="score-display" style="font-size: 2.8rem; font-weight: 900; color: #d97706; text-shadow: 2px 3px 0px #000; margin: 0;">PONTUAÇÃO: 0</p></div>
+            <div id="hud-top" style="padding: 25px; text-align: center; display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 8px; border: 2px solid #00f3ff; color: #00f3ff;">
+                    <span style="font-size: 1rem; font-weight: bold;">AZUL</span><br>
+                    <span id="score-blue" style="font-size: 2.5rem; font-weight: 900;">0</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                    <p id="score-display" style="font-size: 2.0rem; font-weight: 900; color: #fbbf24; text-shadow: 2px 3px 0px #000; margin: 0;">PONTOS: 0</p>
+                    <p id="ctf-message" style="font-size: 1.5rem; font-weight: 900; color: #fff; text-shadow: 2px 3px 0px #000; margin-top: 10px; opacity: 0; transition: opacity 0.5s;">Mensagem</p>
+                </div>
+                <div style="background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 8px; border: 2px solid #ff007f; color: #ff007f;">
+                    <span style="font-size: 1rem; font-weight: bold;">VERMELHA</span><br>
+                    <span id="score-red" style="font-size: 2.5rem; font-weight: 900;">0</span>
+                </div>
+            </div>
             <div id="center-ui" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center;">
                 <div id="crosshair" style="width: 4px; height: 4px; background-color: rgba(255, 255, 255, 0.9); border-radius: 50%; position: relative; box-shadow: 0 0 4px rgba(0,0,0,0.8);">
                     <div style="position: absolute; background-color: rgba(255, 255, 255, 0.8); width: 2px; height: 8px; top: -14px; left: 1px;"></div>
@@ -328,6 +412,9 @@ class DesertScene {
         if (this.projectileManager) this.projectileManager.update(delta);
         if (this.player && this.bots) {
             this.bots.forEach(b => b.update(delta, this.player.yawObject.position));
+            if (this.gameManager.handleCTFLogic) {
+                this.gameManager.handleCTFLogic(this.player, this.bots);
+            }
         }
 
         const wind = this.worldState.windSpeed;
