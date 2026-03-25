@@ -9,8 +9,22 @@ class DesertScene {
         this.projectileManager = null;
         this.shootables = [];
         this.clock = new THREE.Clock();
-
         this.animationFrameId = null;
+
+        this.ARENA_LENGTH = 160;
+        this.ARENA_WIDTH = 90;
+        this.mapSeed = {
+            offsetX: Math.random() * 5000, offsetZ: Math.random() * 5000,
+            canyonOffset: (Math.random() - 0.5) * 60, canyonCurve: 0.015 + Math.random() * 0.04,
+            hillSize: 12 + Math.random() * 14, duneFrequency: 0.01 + Math.random() * 0.02
+        };
+
+        this.arenaGroup = new THREE.Group();
+        this.backgroundGroup = new THREE.Group();
+
+        this.animatedObjects = { cactus: [], flags: [], clouds: [], turbines: [] };
+        this.worldState = { windSpeed: 1.0, rainIntensity: 0, sandstormIntensity: 0, isStorm: false };
+        this.waterMesh = null;
     }
 
     init(container) {
@@ -18,20 +32,24 @@ class DesertScene {
         this.buildUI();
 
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color('#d2b48c');
         this.scene.fog = new THREE.FogExp2('#d2b48c', 0.0035);
 
-        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 3500);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         this.container.appendChild(this.renderer.domElement);
 
+        this.scene.add(this.arenaGroup);
+        this.scene.add(this.backgroundGroup);
+
         this.setupLighting();
         this.buildEnvironment();
+
+        window.getTerrainHeight = this.getTerrainHeight.bind(this);
 
         this.player = new window.Player(this.scene, this.camera);
         if (window.Store && window.Store.state && window.Store.state.playerColor) {
@@ -43,13 +61,12 @@ class DesertScene {
 
         window.AppProjectileManager = this.projectileManager;
         window.AppGameManagerInstance = this.gameManager;
-        window.getTerrainHeight = () => 0; // Keeping it flat for gameplay stability in the SPA
 
         window.updateCamModeUI = (isTPS) => {
             const el = document.getElementById('cam-mode');
             if (el) {
                 el.innerText = isTPS ? "3ª Pessoa (TPS)" : "1ª Pessoa (FPS)";
-                el.style.color = isTPS ? "#fbbf24" : "#10b981";
+                el.style.color = isTPS ? "#fbbf24" : "#d97706";
             }
         };
 
@@ -109,66 +126,166 @@ class DesertScene {
     }
 
     setupLighting() {
-        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x6b4a2d, 0.6);
+        this.scene.background = new THREE.Color('#d2b48c');
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         this.scene.add(ambientLight);
 
         const sunLight = new THREE.DirectionalLight(0xffeedd, 1.3);
         sunLight.position.set(50, 100, 30);
         sunLight.castShadow = true;
-        sunLight.shadow.camera.left = -60; sunLight.shadow.camera.right = 60;
-        sunLight.shadow.camera.top = 60; sunLight.shadow.camera.bottom = -60;
-        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.left = -160; sunLight.shadow.camera.right = 160;
+        sunLight.shadow.camera.top = 160; sunLight.shadow.camera.bottom = -160;
+        sunLight.shadow.mapSize.width = 4096; sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.bias = -0.0003;
         this.scene.add(sunLight);
     }
 
-    buildEnvironment() {
-        const mats = {
-            sand: new THREE.MeshStandardMaterial({ color: '#d2b48c', roughness: 1.0 }),
-            adobe: new THREE.MeshStandardMaterial({ color: '#b38b6d', roughness: 0.9 }),
-            cactus: new THREE.MeshStandardMaterial({ color: '#4d632c', roughness: 0.8 }),
-        };
+    createProceduralTexture(type, baseColor, noiseColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 512, 512);
+        ctx.fillStyle = noiseColor;
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(250, 250), mats.sand);
-        floor.rotation.x = -Math.PI/2;
-        floor.receiveShadow = true;
-        this.scene.add(floor);
-        this.shootables.push(floor);
+        const count = type === 'sand' ? 15000 : 8000;
+        for(let i=0; i<count; i++) {
+            const x = Math.random() * 512; const y = Math.random() * 512;
+            ctx.globalAlpha = Math.random() * 0.4;
+            if (type === 'sand') {
+                ctx.fillRect(x, y, 1.5, 1.5);
+            } else if (type === 'cactus') {
+                ctx.globalAlpha = 0.1;
+                ctx.fillRect(x, y, 1, 25);
+            } else if (type === 'adobe') {
+                ctx.globalAlpha = 0.2;
+                ctx.fillRect(x, y, 4, 3);
+            }
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+        return texture;
+    }
 
-        // Cactus
-        for(let i=0; i<80; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 30 + Math.random() * 60;
-
-            const cactusGrp = new THREE.Group();
-            const h = 4 + Math.random()*4;
-            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, h, 8), mats.cactus);
-            stem.position.y = h/2; stem.castShadow = true; stem.receiveShadow = true;
-
-            cactusGrp.add(stem);
-            cactusGrp.position.set(Math.cos(angle)*radius, 0, Math.sin(angle)*radius);
-
-            this.scene.add(cactusGrp);
-            this.shootables.push(stem);
+    getTerrainHeight(x, z) {
+        let baseExt = 0;
+        if (Math.abs(x) > this.ARENA_LENGTH/2 || Math.abs(z) > this.ARENA_WIDTH/2) {
+            let dist = Math.sqrt(x*x + z*z);
+            baseExt = Math.max(0, (dist - 80) * 0.18);
+            let wave = Math.sin((x + this.mapSeed.offsetX) * 0.025) * Math.cos((z + this.mapSeed.offsetZ) * 0.025);
+            baseExt += (wave * wave) * 18;
         }
 
-        // Ruins/Bunkers
-        const ruinGeos = [
-            {x: 12, z: -20, r: 0.2},
-            {x: 25, z: -35, r: 1.5},
-            {x: -15, z: -30, r: -0.5}
-        ];
+        let canyonDepth = 0;
+        let canyonPathX = (this.ARENA_LENGTH / 2 + 45 + this.mapSeed.canyonOffset) + Math.sin(z * this.mapSeed.canyonCurve) * 35;
+        let distToCanyon = Math.abs(x - canyonPathX);
+        if (distToCanyon < 18) {
+            let carve = Math.cos((distToCanyon / 18) * (Math.PI / 2));
+            canyonDepth = carve * (baseExt + 5);
+        }
 
-        ruinGeos.forEach(t => {
-            const rGrp = new THREE.Group();
-            const w1 = new THREE.Mesh(new THREE.BoxGeometry(8.5, 5, 1.2), mats.adobe);
-            w1.position.y = 2.5; w1.castShadow = true; w1.receiveShadow = true;
-            rGrp.add(w1);
+        const distFromCenterX = Math.abs(x);
+        let edgeFlatten = 1;
+        if (distFromCenterX > this.ARENA_LENGTH/2 - 30) edgeFlatten = Math.max(0, (this.ARENA_LENGTH/2 - distFromCenterX) / 30);
+
+        const distFromCenter = Math.sqrt(x*x + z*z);
+        let hill = 0;
+        if (distFromCenter < 45) hill = Math.cos((distFromCenter / 45) * (Math.PI/2)) * this.mapSeed.hillSize;
+
+        let noise = Math.sin((x + this.mapSeed.offsetX) * 0.05) * Math.cos((z + this.mapSeed.offsetZ) * 0.05) * 6;
+        noise += Math.sin((x + this.mapSeed.offsetX) * 0.12 + (z + this.mapSeed.offsetZ) * 0.08) * 3.0;
+
+        return ((noise + hill) * edgeFlatten) + baseExt - canyonDepth;
+    }
+
+    buildEnvironment() {
+        const texSand = this.createProceduralTexture('sand', '#d2b48c', '#c3a37a');
+        const texAdobe = this.createProceduralTexture('adobe', '#b38b6d', '#8b6d5c');
+        const texCactus = this.createProceduralTexture('cactus', '#4d632c', '#3a4a21');
+        texSand.repeat.set(20, 20);
+
+        this.materials = {
+            sand: new THREE.MeshStandardMaterial({ map: texSand, roughness: 1.0 }),
+            adobe: new THREE.MeshStandardMaterial({ map: texAdobe, roughness: 0.9 }),
+            cactus: new THREE.MeshStandardMaterial({ map: texCactus, roughness: 0.8 }),
+            canyonWater: new THREE.MeshStandardMaterial({ color: '#1ca3ec', transparent: true, opacity: 0.6, metalness: 0.2, roughness: 0.1 })
+        };
+
+        const segs = 140;
+        const geo = new THREE.PlaneGeometry(this.ARENA_LENGTH*4, this.ARENA_WIDTH*4, segs, segs);
+        const pos = geo.attributes.position;
+        for(let i=0; i<pos.count; i++) pos.setZ(i, this.getTerrainHeight(pos.getX(i), -pos.getY(i)));
+        geo.computeVertexNormals();
+        const groundMesh = new THREE.Mesh(geo, this.materials.sand);
+        groundMesh.rotation.x = -Math.PI/2; groundMesh.receiveShadow = true;
+        this.arenaGroup.add(groundMesh);
+        this.shootables.push(groundMesh);
+
+        // Wadi/Water
+        const wGeo = new THREE.PlaneGeometry(this.ARENA_LENGTH*4, this.ARENA_WIDTH*4, 32, 32);
+        this.waterMesh = new THREE.Mesh(wGeo, this.materials.canyonWater);
+        this.waterMesh.rotation.x = -Math.PI/2; this.waterMesh.position.y = -2.2;
+        const wPos = wGeo.attributes.position; this.waterMesh.userData.baseZ = [];
+        for(let i=0; i<wPos.count; i++) this.waterMesh.userData.baseZ.push(wPos.getZ(i));
+        this.arenaGroup.add(this.waterMesh);
+
+        const createCactus = (x, z, isBg = false) => {
+            const y = this.getTerrainHeight(x, z);
+            if (y < -1.5) return;
+            const cactus = new THREE.Group();
+            const h = 4 + Math.random()*4;
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, h, 8).translate(0, h/2, 0), this.materials.cactus);
+            stem.castShadow = !isBg; stem.receiveShadow = !isBg; cactus.add(stem);
+
+            const arms = 1 + Math.floor(Math.random()*3);
+            for(let i=0; i<arms; i++) {
+                const armH = 2 + Math.random()*2;
+                const arm = new THREE.Group();
+                const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, armH, 8).translate(0, armH/2, 0), this.materials.cactus);
+                arm.add(seg1);
+                arm.position.y = 1 + Math.random()*(h-2);
+                arm.rotation.z = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random()*0.5);
+                arm.rotation.y = Math.random()*Math.PI*2;
+                cactus.add(arm);
+
+                if(!isBg) {
+                    arm.userData.baseRotZ = arm.rotation.z;
+                    arm.userData.offset = Math.random()*Math.PI;
+                    this.animatedObjects.cactus.push(arm);
+                }
+                if(!isBg) this.shootables.push(seg1);
+            }
+
+            cactus.position.set(x, y - 0.5, z);
+            if(isBg) this.backgroundGroup.add(cactus); else this.arenaGroup.add(cactus);
+            if(!isBg) this.shootables.push(stem);
+        };
+
+        const createAdobeRuin = (x, z, ry) => {
+            const y = this.getTerrainHeight(x, z);
+            if (y < -1.0) return;
+            const r = new THREE.Group();
+            const w1 = new THREE.Mesh(new THREE.BoxGeometry(8.5, 5, 1.2).translate(0, 2.5, 0), this.materials.adobe);
+            w1.castShadow = true; w1.receiveShadow = true; r.add(w1);
             this.shootables.push(w1);
+            if(Math.random() > 0.4) {
+                const w2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4, 6.5).translate(0, 2, 3.25), this.materials.adobe);
+                w2.position.x = 3.65; w2.castShadow = true; r.add(w2);
+                this.shootables.push(w2);
+            }
+            r.position.set(x, y - 1.2, z); r.rotation.y = ry;
+            this.arenaGroup.add(r);
+        };
 
-            rGrp.position.set(t.x, 0, t.z);
-            rGrp.rotation.y = t.r;
-            this.scene.add(rGrp);
-        });
+        for(let i=0; i<400; i++) {
+            const ang = Math.random()*Math.PI*2, rad = 100 + Math.random()*160;
+            createCactus(Math.cos(ang)*rad, Math.sin(ang)*rad, true);
+        }
+
+        for(let i=0; i<70; i++) {
+            const x = (Math.random()-0.5)*140, z = (Math.random()-0.5)*80;
+            if(Math.abs(x) > 40 || Math.abs(z) > 15) createCactus(x, z);
+        }
+        for(let i=0; i<12; i++) createAdobeRuin((Math.random()-0.5)*120, (Math.random()-0.5)*70, Math.random()*Math.PI);
     }
 
     setupLockControls() {
@@ -199,6 +316,20 @@ class DesertScene {
 
         if (this.player) this.player.update(delta, time);
         if (this.projectileManager) this.projectileManager.update(delta);
+
+        const wind = this.worldState.windSpeed;
+        this.animatedObjects.cactus.forEach(arm => {
+            arm.rotation.z = arm.userData.baseRotZ + Math.sin(time * wind * 0.5 + arm.userData.offset) * (0.05 * Math.min(wind, 4));
+        });
+
+        if(this.waterMesh) {
+            const wPos = this.waterMesh.geometry.attributes.position;
+            for(let i=0; i<wPos.count; i++) {
+                const wave = Math.sin(wPos.getX(i)*0.5 + time) * 0.12 + Math.cos(wPos.getY(i)*0.4 + time*1.2) * 0.1;
+                wPos.setZ(i, this.waterMesh.userData.baseZ[i] + wave);
+            }
+            wPos.needsUpdate = true;
+        }
 
         this.renderer.render(this.scene, this.camera);
     }

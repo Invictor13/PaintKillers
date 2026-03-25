@@ -4,28 +4,38 @@ class ForestScene {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
-        this.controls = null;
 
         this.player = null;
         this.projectileManager = null;
         this.shootables = [];
         this.clock = new THREE.Clock();
-
         this.animationFrameId = null;
+
+        this.ARENA_LENGTH = 160;
+        this.ARENA_WIDTH = 90;
+        this.mapSeed = {
+            offsetX: Math.random() * 1000, offsetZ: Math.random() * 1000,
+            river1Offset: (Math.random() - 0.5) * 40, river2Offset: (Math.random() - 0.5) * 40,
+            riverCurve1: 0.02 + Math.random() * 0.05, riverCurve2: 0.02 + Math.random() * 0.05,
+            hillSize: 8 + Math.random() * 10, hillOffsetZ: (Math.random() - 0.5) * 30
+        };
+
+        this.arenaGroup = new THREE.Group();
+        this.backgroundGroup = new THREE.Group();
+
+        this.animatedObjects = { leaves: [], flags: [], clouds: [], turbines: [] };
+        this.worldState = { windSpeed: 1.0 };
+        this.waterMesh = null;
     }
 
     init(container) {
         this.container = container;
-
-        // Ensure UI exists
         this.buildUI();
 
-        // Three.js Setup
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color('#5eb1ff');
-        this.scene.fog = new THREE.FogExp2('#5eb1ff', 0.012);
+        this.scene.fog = new THREE.FogExp2('#5b8c9c', 0.003);
 
-        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 3000);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -34,13 +44,15 @@ class ForestScene {
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         this.container.appendChild(this.renderer.domElement);
 
+        this.scene.add(this.arenaGroup);
+        this.scene.add(this.backgroundGroup);
+
         this.setupLighting();
         this.buildEnvironment();
 
-        // Player & Managers
-        this.player = new window.Player(this.scene, this.camera);
+        window.getTerrainHeight = this.getTerrainHeight.bind(this);
 
-        // Get user color from store
+        this.player = new window.Player(this.scene, this.camera);
         if (window.Store && window.Store.state && window.Store.state.playerColor) {
             this.player.setColor(window.Store.state.playerColor);
         }
@@ -48,12 +60,9 @@ class ForestScene {
         const raycaster = new THREE.Raycaster();
         this.projectileManager = new window.ProjectileManager(this.scene, raycaster, this.shootables);
 
-        // Global References for Player to access easily without hard-coupling
         window.AppProjectileManager = this.projectileManager;
         window.AppGameManagerInstance = this.gameManager;
-        window.getTerrainHeight = () => 0; // Flat floor for simple forest
 
-        // Global UI callbacks
         window.updateCamModeUI = (isTPS) => {
             const el = document.getElementById('cam-mode');
             if (el) {
@@ -71,7 +80,7 @@ class ForestScene {
             const hmUI = document.getElementById('hit-marker');
             if(hmUI) {
                 hmUI.classList.remove('active', 'headshot');
-                void hmUI.offsetWidth; // Reflow magic
+                void hmUI.offsetWidth;
                 if(isHead) hmUI.classList.add('headshot');
                 hmUI.classList.add('active');
                 setTimeout(() => hmUI.classList.remove('active'), 150);
@@ -80,7 +89,6 @@ class ForestScene {
 
         this.setupLockControls();
 
-        // Start Loop
         this.gameManager.startMatch();
         this.clock.start();
         this.animate();
@@ -119,57 +127,198 @@ class ForestScene {
     }
 
     setupLighting() {
-        const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5);
+        this.scene.background = new THREE.Color('#5b8c9c');
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
         this.scene.add(ambientLight);
 
-        const sunLight = new THREE.DirectionalLight(0xfff4e5, 1.4);
+        const sunLight = new THREE.DirectionalLight(0xffeedd, 1.0);
         sunLight.position.set(50, 100, 30);
         sunLight.castShadow = true;
-        sunLight.shadow.camera.left = -60; sunLight.shadow.camera.right = 60;
-        sunLight.shadow.camera.top = 60; sunLight.shadow.camera.bottom = -60;
-        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.left = -150; sunLight.shadow.camera.right = 150;
+        sunLight.shadow.camera.top = 150; sunLight.shadow.camera.bottom = -150;
+        sunLight.shadow.mapSize.width = 4096; sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.bias = -0.0005;
         this.scene.add(sunLight);
     }
 
-    buildEnvironment() {
-        const mats = {
-            grass: new THREE.MeshStandardMaterial({ color: '#4ade80', roughness: 1.0 }),
-            wood: new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.9 }),
-            leaves: new THREE.MeshStandardMaterial({ color: '#2d5a27', roughness: 0.8 }),
-            target: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5 })
-        };
+    createProceduralTexture(type, baseColor, noiseColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = noiseColor;
 
-        // Floor
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(250, 250), mats.grass);
-        floor.rotation.x = -Math.PI/2;
-        floor.receiveShadow = true;
-        this.scene.add(floor);
-        this.shootables.push(floor);
+        const noiseCount = type === 'wood' ? 1000 : 5000;
+        for(let i=0; i<noiseCount; i++) {
+            const x = Math.random() * 256; const y = Math.random() * 256;
+            if (type === 'wood') {
+                ctx.globalAlpha = Math.random() * 0.3; ctx.fillRect(x, y, 1, 10 + Math.random() * 30);
+            } else if (type === 'grass') {
+                ctx.globalAlpha = Math.random() * 0.5; ctx.fillRect(x, y, 2, 2);
+            } else if (type === 'rock' || type === 'concrete') {
+                ctx.globalAlpha = Math.random() * 0.2; ctx.fillRect(x, y, 2 + Math.random()*3, 2 + Math.random()*3);
+            } else if (type === 'brick') {
+                ctx.globalAlpha = Math.random() * 0.4; ctx.fillRect(x, y, 3, 1);
+            }
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(2, 2);
+        return texture;
+    }
 
-        // Trees
-        for(let i=0; i<80; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 30 + Math.random() * 60;
-            const scale = 0.7 + Math.random() * 0.8;
-
-            const treeGrp = new THREE.Group();
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 3), mats.wood);
-            trunk.position.y = 1.5; trunk.castShadow = true; trunk.receiveShadow = true;
-
-            const l1 = new THREE.Mesh(new THREE.ConeGeometry(2.0, 4, 6), mats.leaves);
-            l1.position.y = 4; l1.castShadow = true; l1.receiveShadow = true;
-
-            const l2 = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3.5, 6), mats.leaves);
-            l2.position.y = 6; l2.castShadow = true; l2.receiveShadow = true;
-
-            treeGrp.add(trunk, l1, l2);
-            treeGrp.position.set(Math.cos(angle)*radius, 0, Math.sin(angle)*radius);
-            treeGrp.scale.setScalar(scale);
-
-            this.scene.add(treeGrp);
-            this.shootables.push(trunk, l1, l2);
+    getTerrainHeight(x, z) {
+        let baseExt = 0;
+        if (Math.abs(x) > this.ARENA_LENGTH/2 || Math.abs(z) > this.ARENA_WIDTH/2) {
+            let dist = Math.sqrt(x*x + z*z);
+            baseExt = Math.max(0, (dist - Math.max(this.ARENA_LENGTH/2, this.ARENA_WIDTH/2)) * 0.12);
+            let wave = Math.sin((x + this.mapSeed.offsetX) * 0.03) * Math.cos((z + this.mapSeed.offsetZ) * 0.03);
+            baseExt += (wave * wave) * 15;
         }
 
+        let riverDepth = 0;
+        let riverCurveX = (this.ARENA_LENGTH / 2 + 40 + this.mapSeed.river1Offset) + Math.sin((z + this.mapSeed.offsetZ) * this.mapSeed.riverCurve1) * 25;
+        let distToRiver = Math.abs(x - riverCurveX);
+        if (distToRiver < 15) {
+            let carve = Math.cos((distToRiver / 15) * (Math.PI / 2));
+            riverDepth = carve * (baseExt + 3);
+        }
+
+        let riverCurveX2 = -(this.ARENA_LENGTH / 2 + 40 + this.mapSeed.river2Offset) + Math.cos((z + this.mapSeed.offsetZ) * this.mapSeed.riverCurve2) * 25;
+        let distToRiver2 = Math.abs(x - riverCurveX2);
+        if (distToRiver2 < 15) {
+            let carve = Math.cos((distToRiver2 / 15) * (Math.PI / 2));
+            riverDepth = Math.max(riverDepth, carve * (baseExt + 3));
+        }
+
+        const distFromCenterX = Math.abs(x);
+        let edgeFlatten = 1;
+        if (distFromCenterX > this.ARENA_LENGTH/2 - 25) { edgeFlatten = Math.max(0, (this.ARENA_LENGTH/2 - distFromCenterX) / 25); }
+
+        const distFromCenter = Math.sqrt(x*x + Math.pow(z - this.mapSeed.hillOffsetZ, 2));
+        let hillHeight = 0;
+        if (distFromCenter < 35) { hillHeight = Math.cos((distFromCenter / 35) * (Math.PI/2)) * this.mapSeed.hillSize; }
+
+        let noise = Math.sin((x + this.mapSeed.offsetX) * 0.08) * Math.cos((z + this.mapSeed.offsetZ) * 0.08) * 4;
+        noise += Math.sin((x + this.mapSeed.offsetX) * 0.15 + (z + this.mapSeed.offsetZ) * 0.1) * 2.0;
+
+        return ((noise + hillHeight) * edgeFlatten) + baseExt - riverDepth;
+    }
+
+    buildEnvironment() {
+        const texGrass = this.createProceduralTexture('grass', '#3b5e2b', '#2a421e');
+        const texWood = this.createProceduralTexture('wood', '#5c4a3d', '#3a2d24');
+        const texRock = this.createProceduralTexture('rock', '#6b7280', '#4b5563');
+        const texBrick = this.createProceduralTexture('brick', '#8c4830', '#5e2b1b');
+        texGrass.repeat.set(25, 25);
+
+        this.materials = {
+            grass: new THREE.MeshStandardMaterial({ map: texGrass, roughness: 1.0 }),
+            wood: new THREE.MeshStandardMaterial({ map: texWood, roughness: 0.9 }),
+            leaves: new THREE.MeshStandardMaterial({ color: '#2d4c1e', roughness: 0.8 }),
+            rock: new THREE.MeshStandardMaterial({ map: texRock, roughness: 0.9, flatShading: true }),
+            brick: new THREE.MeshStandardMaterial({ map: texBrick, roughness: 0.9 }),
+            water: new THREE.MeshStandardMaterial({ color: '#1ca3ec', transparent: true, opacity: 0.85, roughness: 0.1, metalness: 0.3 })
+        };
+
+        // Terrain Ground
+        const segments = 150;
+        const groundGeo = new THREE.PlaneGeometry(this.ARENA_LENGTH * 4, this.ARENA_WIDTH * 4, segments, segments);
+        const pos = groundGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            pos.setZ(i, this.getTerrainHeight(pos.getX(i), -pos.getY(i)));
+        }
+        groundGeo.computeVertexNormals();
+        const groundMesh = new THREE.Mesh(groundGeo, this.materials.grass);
+        groundMesh.rotation.x = -Math.PI / 2; groundMesh.receiveShadow = true;
+        this.arenaGroup.add(groundMesh);
+        this.shootables.push(groundMesh);
+
+        // Exterior Rivers
+        const waterGeo = new THREE.PlaneGeometry(this.ARENA_LENGTH * 4, this.ARENA_WIDTH * 4, 32, 32);
+        this.waterMesh = new THREE.Mesh(waterGeo, this.materials.water);
+        this.waterMesh.rotation.x = -Math.PI / 2;
+        this.waterMesh.position.y = -1.8;
+        const wPos = waterGeo.attributes.position;
+        this.waterMesh.userData.basePositions = [];
+        for(let i=0; i<wPos.count; i++) this.waterMesh.userData.basePositions.push(wPos.getZ(i));
+        this.arenaGroup.add(this.waterMesh);
+
+        // Trees
+        const createTree = (x, z, isBackground = false) => {
+            const y = this.getTerrainHeight(x, z);
+            if (y < -1.0) return;
+            const tree = new THREE.Group();
+            const trunkHeight = 4 + Math.random() * 3;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, trunkHeight, 7).translate(0, trunkHeight/2, 0), this.materials.wood);
+            trunk.castShadow = !isBackground; trunk.receiveShadow = !isBackground; tree.add(trunk);
+
+            const leavesCount = isBackground ? 1 : 2 + Math.floor(Math.random() * 2);
+            for(let i=0; i<leavesCount; i++) {
+                const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(2 + Math.random(), isBackground ? 0 : 1), this.materials.leaves);
+                leaf.scale.set(0.8+Math.random()*0.5, 0.8+Math.random()*0.4, 0.8+Math.random()*0.5);
+                leaf.position.set((Math.random()-0.5)*1.5, trunkHeight + (Math.random()*2), (Math.random()-0.5)*1.5);
+                const baseRotX = Math.random()*Math.PI, baseRotZ = Math.random()*Math.PI;
+                leaf.rotation.set(baseRotX, Math.random()*Math.PI, baseRotZ); leaf.castShadow = !isBackground;
+
+                if(!isBackground) {
+                    leaf.userData.baseRotX = baseRotX; leaf.userData.baseRotZ = baseRotZ;
+                    leaf.userData.swayOffset = Math.random() * Math.PI * 2;
+                    this.animatedObjects.leaves.push(leaf);
+                }
+                tree.add(leaf);
+                if(!isBackground) this.shootables.push(leaf);
+            }
+            tree.position.set(x, y - 1.5, z);
+            if(isBackground) this.backgroundGroup.add(tree); else this.arenaGroup.add(tree);
+            if(!isBackground) this.shootables.push(trunk);
+        };
+
+        // Dense Background Forest
+        for (let i = 0; i < 400; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = (Math.max(this.ARENA_LENGTH, this.ARENA_WIDTH)/2) + 10 + Math.random() * 140;
+            createTree(Math.cos(angle) * radius, Math.sin(angle) * radius, true);
+        }
+
+        // Tactical Forest
+        for (let i = 0; i < 80; i++) {
+            const x = (Math.random() - 0.5) * (this.ARENA_LENGTH - 4), z = (Math.random() - 0.5) * (this.ARENA_WIDTH - 4);
+            if (Math.abs(x) > this.ARENA_LENGTH/2 - 35 && Math.abs(z) < 25) continue;
+            createTree(x, z);
+        }
+
+        // Rocks & Ruins
+        for (let i = 0; i < 60; i++) {
+            const x = (Math.random()-0.5)*(this.ARENA_LENGTH-10);
+            const z = (Math.random()-0.5)*(this.ARENA_WIDTH-10);
+            const y = this.getTerrainHeight(x, z);
+            if (y < -1.0) continue;
+            const scale = 0.5+Math.random()*1.5;
+            const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 1), this.materials.rock);
+            rock.scale.set(scale*(0.8+Math.random()*0.6), scale*(0.4+Math.random()*0.5), scale*(0.8+Math.random()*0.6));
+            rock.position.set(x, y - (scale * 1.5), z);
+            rock.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+            rock.castShadow = true; rock.receiveShadow = true;
+            this.arenaGroup.add(rock);
+            this.shootables.push(rock);
+        }
+
+        for(let i=0; i<8; i++) {
+            const x = (Math.random()-0.5)*(this.ARENA_LENGTH-20);
+            const z = (Math.random()-0.5)*(this.ARENA_WIDTH-15);
+            const rotY = Math.random()*Math.PI;
+            const y = this.getTerrainHeight(x, z);
+            if (y < -1.0) continue;
+            const ruin = new THREE.Group();
+            const w1 = new THREE.Mesh(new THREE.BoxGeometry(8, 4.5, 0.5).translate(0, 2.25, 0), this.materials.brick);
+            w1.castShadow = true; w1.receiveShadow = true; ruin.add(w1);
+            const w2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.6, 6).translate(0, 1.8, 3), this.materials.brick);
+            w2.position.set(4, 0, 0); w2.castShadow = true; w2.receiveShadow = true; ruin.add(w2);
+            ruin.position.set(x, y - 1.5, z); ruin.rotation.y = rotY;
+            this.arenaGroup.add(ruin);
+            this.shootables.push(w1, w2);
+        }
     }
 
     setupLockControls() {
@@ -201,12 +350,29 @@ class ForestScene {
         if (this.player) this.player.update(delta, time);
         if (this.projectileManager) this.projectileManager.update(delta);
 
+        // Env Animations
+        const wind = this.worldState.windSpeed;
+        this.animatedObjects.leaves.forEach(leaf => {
+            leaf.rotation.x = leaf.userData.baseRotX + Math.sin(time * wind + leaf.userData.swayOffset) * (0.1 * Math.min(wind, 3));
+            leaf.rotation.z = leaf.userData.baseRotZ + Math.cos(time * 0.8 * wind + leaf.userData.swayOffset) * (0.1 * Math.min(wind, 3));
+        });
+
+        if (this.waterMesh) {
+            const wPos = this.waterMesh.geometry.attributes.position;
+            for(let i=0; i<wPos.count; i++) {
+                const vx = wPos.getX(i);
+                const vy = wPos.getY(i);
+                const wave = Math.sin(vx * 0.5 + time) * 0.1 + Math.cos(vy * 0.3 + time * 1.5) * 0.1;
+                wPos.setZ(i, this.waterMesh.userData.basePositions[i] + wave);
+            }
+            wPos.needsUpdate = true;
+        }
+
         this.renderer.render(this.scene, this.camera);
     }
 
     destroy() {
         if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
-
         document.removeEventListener('pointerlockchange', this.onLockChange);
         window.removeEventListener('resize', this.onWindowResize);
 
@@ -217,7 +383,6 @@ class ForestScene {
             this.renderer.dispose();
         }
 
-        // Clean global scope references
         window.AppProjectileManager = null;
         window.AppGameManagerInstance = null;
         window.updateCamModeUI = null;
