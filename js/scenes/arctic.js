@@ -9,10 +9,19 @@ class ArcticScene {
         this.projectileManager = null;
         this.shootables = [];
         this.clock = new THREE.Clock();
-
         this.animationFrameId = null;
 
+        this.ARENA_LENGTH = 160;
+        this.ARENA_WIDTH = 90;
+        this.mapSeed = { offsetX: Math.random()*5000, offsetZ: Math.random()*5000, lakeOffset: (Math.random()-0.5)*60, lakeCurve: 0.015+Math.random()*0.04, hillSize: 12+Math.random()*20 };
+
+        this.arenaGroup = new THREE.Group();
+        this.backgroundGroup = new THREE.Group();
+        this.animatedObjects = { pines: [] };
+
         this.snowParticles = null;
+        this.particleCount = 4000;
+        this.waterMesh = null;
     }
 
     init(container) {
@@ -25,16 +34,21 @@ class ArcticScene {
 
         this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         this.container.appendChild(this.renderer.domElement);
 
+        this.scene.add(this.arenaGroup);
+        this.scene.add(this.backgroundGroup);
+
         this.setupLighting();
         this.buildEnvironment();
         this.buildWeather();
+
+        window.getTerrainHeight = this.getTerrainHeight.bind(this);
 
         this.player = new window.Player(this.scene, this.camera);
         if (window.Store && window.Store.state && window.Store.state.playerColor) {
@@ -46,7 +60,6 @@ class ArcticScene {
 
         window.AppProjectileManager = this.projectileManager;
         window.AppGameManagerInstance = this.gameManager;
-        window.getTerrainHeight = () => 0; // Keeping it flat for SPA stability
 
         window.updateCamModeUI = (isTPS) => {
             const el = document.getElementById('cam-mode');
@@ -118,18 +131,18 @@ class ArcticScene {
         const sunLight = new THREE.DirectionalLight(0xe0f2fe, 1.2);
         sunLight.position.set(50, 100, 30);
         sunLight.castShadow = true;
-        sunLight.shadow.camera.left = -60; sunLight.shadow.camera.right = 60;
-        sunLight.shadow.camera.top = 60; sunLight.shadow.camera.bottom = -60;
-        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.left = -160; sunLight.shadow.camera.right = 160;
+        sunLight.shadow.camera.top = 160; sunLight.shadow.camera.bottom = -160;
+        sunLight.shadow.mapSize.width = 4096; sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.bias = -0.0003;
         this.scene.add(sunLight);
     }
 
     buildWeather() {
-        const particleCount = 4000;
         const sGeo = new THREE.BufferGeometry();
-        const sPos = new Float32Array(particleCount * 3);
+        const sPos = new Float32Array(this.particleCount * 3);
 
-        for(let i=0; i<particleCount*3; i+=3) {
+        for(let i=0; i<this.particleCount*3; i+=3) {
             sPos[i] = (Math.random()-0.5)*300;
             sPos[i+1] = Math.random()*150;
             sPos[i+2] = (Math.random()-0.5)*300;
@@ -140,64 +153,145 @@ class ArcticScene {
         this.scene.add(this.snowParticles);
     }
 
-    buildEnvironment() {
-        const mats = {
-            snow: new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 1.0 }),
-            bark: new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.9 }),
-            pine: new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.8 }), // snowy pine
-            metal: new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.7, metalness: 0.3 })
-        };
+    createProceduralTexture(type, baseColor, noiseColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 512, 512);
+        ctx.fillStyle = noiseColor;
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(250, 250), mats.snow);
-        floor.rotation.x = -Math.PI/2;
-        floor.receiveShadow = true;
-        this.scene.add(floor);
-        this.shootables.push(floor);
-
-        // Snow Pines
-        for(let i=0; i<80; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 30 + Math.random() * 60;
-
-            const treeGrp = new THREE.Group();
-
-            const trunkH = 5 + Math.random()*4;
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, trunkH, 8), mats.bark);
-            trunk.position.y = trunkH/2; trunk.castShadow = true; trunk.receiveShadow = true;
-            treeGrp.add(trunk);
-            this.shootables.push(trunk);
-
-            const layers = 3;
-            for(let j=0; j<layers; j++) {
-                const layer = new THREE.Mesh(new THREE.ConeGeometry(2.5 - (j*0.4), 3, 8), mats.pine);
-                layer.position.y = (trunkH * 0.4) + (j * 1.5) + 1.5;
-                layer.castShadow = true;
-                treeGrp.add(layer);
-                this.shootables.push(layer);
+        const count = type === 'snow' ? 18000 : 9000;
+        for(let i=0; i<count; i++) {
+            const x = Math.random() * 512; const y = Math.random() * 512;
+            ctx.globalAlpha = Math.random() * 0.4;
+            if (type === 'snow') {
+                ctx.fillRect(x, y, 2, 2);
+            } else if (type === 'bark') {
+                ctx.globalAlpha = 0.2;
+                ctx.fillRect(x, y, 1, 30);
+            } else if (type === 'metal') {
+                ctx.globalAlpha = 0.15;
+                ctx.fillRect(x, y, 4, 2);
             }
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+        return texture;
+    }
 
-            treeGrp.position.set(Math.cos(angle)*radius, 0, Math.sin(angle)*radius);
-            this.scene.add(treeGrp);
+    getTerrainHeight(x, z) {
+        let baseExt = 0;
+        if (Math.abs(x) > this.ARENA_LENGTH/2 || Math.abs(z) > this.ARENA_WIDTH/2) {
+            let dist = Math.sqrt(x*x + z*z);
+            baseExt = Math.max(0, (dist - 80) * 0.2);
+            let wave = Math.sin((x + this.mapSeed.offsetX) * 0.03) * Math.cos((z + this.mapSeed.offsetZ) * 0.03);
+            baseExt += (wave * wave) * 20;
         }
 
-        // Bunkers
-        const bunkerGeos = [
-            {x: 15, z: -25, r: 0.2},
-            {x: 30, z: -40, r: 1.5},
-            {x: -20, z: -35, r: -0.5}
-        ];
+        let lakeDepth = 0;
+        let pathX = (this.ARENA_LENGTH / 2 + 50 + this.mapSeed.lakeOffset) + Math.sin(z * this.mapSeed.lakeCurve) * 35;
+        let distToLake = Math.abs(x - pathX);
+        if (distToLake < 20) {
+            let carve = Math.cos((distToLake / 20) * (Math.PI / 2));
+            lakeDepth = carve * (baseExt + 6);
+        }
 
-        bunkerGeos.forEach(t => {
-            const bGrp = new THREE.Group();
-            const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 1.5), mats.metal);
-            wall.position.y = 2.5; wall.castShadow = true; wall.receiveShadow = true;
-            bGrp.add(wall);
+        const distFromCenterX = Math.abs(x);
+        let edgeFlatten = 1;
+        if (distFromCenterX > this.ARENA_LENGTH/2 - 30) edgeFlatten = Math.max(0, (this.ARENA_LENGTH/2 - distFromCenterX) / 30);
+
+        const distFromCenter = Math.sqrt(x*x + z*z);
+        let hill = 0;
+        if (distFromCenter < 50) hill = Math.cos((distFromCenter / 50) * (Math.PI/2)) * this.mapSeed.hillSize;
+
+        let noise = Math.sin((x + this.mapSeed.offsetX) * 0.045) * Math.cos((z + this.mapSeed.offsetZ) * 0.045) * 7;
+        noise += Math.sin((x + this.mapSeed.offsetX) * 0.15 + (z + this.mapSeed.offsetZ) * 0.1) * 3.5;
+
+        return ((noise + hill) * edgeFlatten) + baseExt - lakeDepth;
+    }
+
+    buildEnvironment() {
+        const texSnow = this.createProceduralTexture('snow', '#f8fafc', '#e2e8f0');
+        const texBark = this.createProceduralTexture('bark', '#334155', '#1e293b');
+        const texMetal = this.createProceduralTexture('metal', '#64748b', '#475569');
+        texSnow.repeat.set(20, 20);
+
+        this.materials = {
+            snow: new THREE.MeshStandardMaterial({ map: texSnow, roughness: 1.0 }),
+            ice: new THREE.MeshStandardMaterial({ color: '#7dd3fc', transparent: true, opacity: 0.7, metalness: 0.4, roughness: 0.1 }),
+            bark: new THREE.MeshStandardMaterial({ map: texBark, roughness: 0.9 }),
+            pine: new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.8 }),
+            metal: new THREE.MeshStandardMaterial({ map: texMetal, roughness: 0.7, metalness: 0.3 })
+        };
+
+        const segs = 140;
+        const geo = new THREE.PlaneGeometry(this.ARENA_LENGTH*4, this.ARENA_WIDTH*4, segs, segs);
+        const pos = geo.attributes.position;
+        for(let i=0; i<pos.count; i++) pos.setZ(i, this.getTerrainHeight(pos.getX(i), -pos.getY(i)));
+        geo.computeVertexNormals();
+        const groundMesh = new THREE.Mesh(geo, this.materials.snow);
+        groundMesh.rotation.x = -Math.PI/2; groundMesh.receiveShadow = true;
+        this.arenaGroup.add(groundMesh);
+        this.shootables.push(groundMesh);
+
+        // Ice/Water
+        const wGeo = new THREE.PlaneGeometry(this.ARENA_LENGTH*4, this.ARENA_WIDTH*4, 32, 32);
+        this.waterMesh = new THREE.Mesh(wGeo, this.materials.ice);
+        this.waterMesh.rotation.x = -Math.PI/2; this.waterMesh.position.y = -2.5;
+        const wPos = wGeo.attributes.position; this.waterMesh.userData.baseZ = [];
+        for(let i=0; i<wPos.count; i++) this.waterMesh.userData.baseZ.push(wPos.getZ(i));
+        this.arenaGroup.add(this.waterMesh);
+
+        const createPineTree = (x, z, isBg = false) => {
+            const y = this.getTerrainHeight(x, z);
+            if (y < -1.5) return;
+            const tree = new THREE.Group();
+            const trunkH = 5 + Math.random()*4;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, trunkH, 8).translate(0, trunkH/2, 0), this.materials.bark);
+            trunk.castShadow = !isBg; tree.add(trunk);
+            if(!isBg) this.shootables.push(trunk);
+
+            const layers = 3 + Math.floor(Math.random()*3);
+            for(let i=0; i<layers; i++) {
+                const layer = new THREE.Mesh(new THREE.ConeGeometry(2.5 - (i*0.4), 3, 8).translate(0, 1.5, 0), this.materials.pine);
+                layer.position.y = (trunkH * 0.4) + (i * 1.5);
+                layer.castShadow = !isBg;
+                tree.add(layer);
+                if(!isBg) {
+                    layer.userData.baseRotZ = 0; layer.userData.offset = Math.random()*Math.PI;
+                    this.animatedObjects.pines.push(layer);
+                    this.shootables.push(layer);
+                }
+            }
+            tree.position.set(x, y - 0.5, z);
+            if(isBg) this.backgroundGroup.add(tree); else this.arenaGroup.add(tree);
+        };
+
+        const createBunker = (x, z, ry) => {
+            const y = this.getTerrainHeight(x, z);
+            const b = new THREE.Group();
+            const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 1.5).translate(0, 2.5, 0), this.materials.metal);
+            wall.castShadow = true; b.add(wall);
             this.shootables.push(wall);
+            if(Math.random() > 0.4) {
+                const side = new THREE.Mesh(new THREE.BoxGeometry(1.5, 4, 6).translate(0, 2, 3), this.materials.metal);
+                side.position.x = 3.25; b.add(side);
+                this.shootables.push(side);
+            }
+            b.position.set(x, y - 1, z); b.rotation.y = ry;
+            this.arenaGroup.add(b);
+        };
 
-            bGrp.position.set(t.x, 0, t.z);
-            bGrp.rotation.y = t.r;
-            this.scene.add(bGrp);
-        });
+        for(let i=0; i<300; i++) {
+            const ang = Math.random()*Math.PI*2, rad = 100 + Math.random()*180;
+            createPineTree(Math.cos(ang)*rad, Math.sin(ang)*rad, true);
+        }
+
+        for(let i=0; i<80; i++) {
+            const x = (Math.random()-0.5)*140, z = (Math.random()-0.5)*80;
+            if(Math.abs(x) > 45 || Math.abs(z) > 20) createPineTree(x, z);
+        }
+        for(let i=0; i<15; i++) createBunker((Math.random()-0.5)*120, (Math.random()-0.5)*75, Math.random()*Math.PI);
     }
 
     setupLockControls() {
@@ -229,15 +323,19 @@ class ArcticScene {
         if (this.player) this.player.update(delta, time);
         if (this.projectileManager) this.projectileManager.update(delta);
 
+        this.animatedObjects.pines.forEach(layer => {
+            layer.rotation.z = Math.sin(time * 1.0 * 0.5 + layer.userData.offset) * (0.04 * 1.5);
+        });
+
         // Animate Snow Particles
         if (this.snowParticles) {
             const pos = this.snowParticles.geometry.attributes.position.array;
             for(let i=1; i<pos.length; i+=3) {
-                pos[i] -= 1.0; // Y axis drop
-                pos[i-1] -= 1.5 * 1.5; // X axis wind
+                pos[i] -= 1.0;
+                pos[i-1] -= 1.5 * 1.5;
                 if(pos[i] < 0 || pos[i-1] < -150) {
-                    pos[i] = 150; // Reset Y
-                    pos[i-1] = 150; // Reset X
+                    pos[i] = 180 + Math.random()*20;
+                    pos[i-1] = 150;
                 }
             }
             this.snowParticles.geometry.attributes.position.needsUpdate = true;
