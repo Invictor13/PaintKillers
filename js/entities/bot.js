@@ -1,11 +1,12 @@
 class Bot {
-    constructor(scene, shootablesArray) {
+    constructor(scene, shootablesArray, isEnemy = true) {
         this.scene = scene;
         this.shootables = shootablesArray;
         this.meshGroup = new THREE.Group();
         this.isActive = true;
         this.health = 100;
-        this.teamColor = 0xff3333; // Default red team
+        this.isEnemy = isEnemy;
+        this.teamColor = isEnemy ? 0xff3333 : (window.Store && window.Store.state && window.Store.state.playerColor ? parseInt(window.Store.state.playerColor.replace('#', '0x')) : 0x0000ff);
 
         // Target tracking
         this.target = null;
@@ -25,16 +26,17 @@ class Bot {
 
         this.buildMesh();
 
-        // Spawn at random location
+        // Initial setup spawn (can be overridden by game manager)
         this.meshGroup.position.set(
-            (Math.random() - 0.5) * 40,
-            0,
+            this.isEnemy ? (Math.random() * 20 + 20) : (Math.random() * -20 - 20),
+            10,
             (Math.random() - 0.5) * 40
         );
         this.scene.add(this.meshGroup);
 
         // Add to shootables so player can shoot them
         this.shootables.push(this.mesh);
+        this.shootables.push(this.headMesh);
 
         // Raycaster for ground detection
         this.raycaster = new THREE.Raycaster();
@@ -97,6 +99,8 @@ class Bot {
         // Remove from shootables
         const index = this.shootables.indexOf(this.mesh);
         if (index > -1) this.shootables.splice(index, 1);
+        const headIndex = this.shootables.indexOf(this.headMesh);
+        if (headIndex > -1) this.shootables.splice(headIndex, 1);
 
         // Respawn after 5 seconds
         setTimeout(() => this.respawn(), 5000);
@@ -112,6 +116,7 @@ class Bot {
             (Math.random() - 0.5) * 60
         );
         this.shootables.push(this.mesh);
+        this.shootables.push(this.headMesh);
     }
 
     update(delta, playerPos) {
@@ -136,22 +141,57 @@ class Bot {
         }
 
         // AI Logic
-        const distToPlayer = this.meshGroup.position.distanceTo(playerPos);
+        // Find closest enemy target
+        let closestTarget = null;
+        let minDist = Infinity;
 
-        // Face player
-        const targetLook = new THREE.Vector3(playerPos.x, this.meshGroup.position.y, playerPos.z);
+        // For enemies, player is a target. For allies, only enemy bots are targets.
+        if (this.isEnemy && playerPos) {
+            const dist = this.meshGroup.position.distanceTo(playerPos);
+            if (dist < 50) { // Detection range
+                closestTarget = { position: playerPos };
+                minDist = dist;
+            }
+        }
+
+        // Search other bots
+        if (window.AppBots) {
+            window.AppBots.forEach(bot => {
+                if (!bot.isActive || bot === this || bot.isEnemy === this.isEnemy) return;
+                const dist = this.meshGroup.position.distanceTo(bot.meshGroup.position);
+                if (dist < minDist && dist < 50) {
+                    minDist = dist;
+                    closestTarget = { position: bot.meshGroup.position.clone() };
+                }
+            });
+        }
+
+        // Fallback target: center or enemy base if no immediate target
+        if (!closestTarget) {
+            const targetX = this.isEnemy ? -40 : 40; // Towards enemy base
+            closestTarget = { position: new THREE.Vector3(targetX, 0, 0) };
+        }
+
+        const distToTarget = this.meshGroup.position.distanceTo(closestTarget.position);
+
+        // Face target
+        const targetLook = new THREE.Vector3(closestTarget.position.x, this.meshGroup.position.y, closestTarget.position.z);
         this.meshGroup.lookAt(targetLook);
 
         // Movement
         this.moveTimer -= delta;
         if (this.moveTimer <= 0) {
             this.moveTimer = 1 + Math.random() * 2;
-            if (distToPlayer > 15) {
-                // Move towards player
-                this.moveDir.subVectors(playerPos, this.meshGroup.position).normalize();
-            } else if (distToPlayer < 8) {
+            if (distToTarget > 15) {
+                // Move towards target
+                this.moveDir.subVectors(closestTarget.position, this.meshGroup.position);
+                this.moveDir.y = 0;
+                this.moveDir.normalize();
+            } else if (distToTarget < 8) {
                 // Back away
-                this.moveDir.subVectors(this.meshGroup.position, playerPos).normalize();
+                this.moveDir.subVectors(this.meshGroup.position, closestTarget.position);
+                this.moveDir.y = 0;
+                this.moveDir.normalize();
             } else {
                 // Strafe
                 this.moveDir.set((Math.random() - 0.5), 0, (Math.random() - 0.5)).normalize();
@@ -162,18 +202,20 @@ class Bot {
         this.meshGroup.position.addScaledVector(this.moveDir, this.speed * delta);
 
         // Restrict to arena bounds
-        const bounds = 80;
-        if (this.meshGroup.position.x > bounds) this.meshGroup.position.x = bounds;
-        if (this.meshGroup.position.x < -bounds) this.meshGroup.position.x = -bounds;
-        if (this.meshGroup.position.z > bounds) this.meshGroup.position.z = bounds;
-        if (this.meshGroup.position.z < -bounds) this.meshGroup.position.z = -bounds;
+        const boundsX = 75;
+        const boundsZ = 40;
+        if (this.meshGroup.position.x > boundsX) this.meshGroup.position.x = boundsX;
+        if (this.meshGroup.position.x < -boundsX) this.meshGroup.position.x = -boundsX;
+        if (this.meshGroup.position.z > boundsZ) this.meshGroup.position.z = boundsZ;
+        if (this.meshGroup.position.z < -boundsZ) this.meshGroup.position.z = -boundsZ;
 
         // Shooting
-        if (distToPlayer < 40) {
+        // Only shoot if we have a real target (not a fallback base vector)
+        if (closestTarget && closestTarget.position && closestTarget.position.y !== 0 && distToTarget < 40) {
             this.shootTimer -= delta;
             if (this.shootTimer <= 0) {
                 this.shootTimer = 0.5 + Math.random() * 1.5;
-                this.fireAt(playerPos);
+                this.fireAt(closestTarget.position);
             }
         }
     }

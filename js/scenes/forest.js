@@ -64,10 +64,28 @@ class ForestScene {
         window.AppProjectileManager = this.projectileManager;
         window.AppBots = this.bots;
 
-        // Spawn Bots
+        // Base positions for teams
+        this.basePositions = {
+            player: new THREE.Vector3(-this.ARENA_LENGTH/2 + 10, 0, 0),
+            enemy: new THREE.Vector3(this.ARENA_LENGTH/2 - 10, 0, 0)
+        };
+
+        // Adjust player start position to base
+        this.player.yawObject.position.set(this.basePositions.player.x, this.getTerrainHeight(this.basePositions.player.x, this.basePositions.player.z) + 1.6, this.basePositions.player.z);
+        this.player.yawObject.lookAt(0, this.player.yawObject.position.y, 0);
+
+        // Spawn Bots (Allies and Enemies)
         if (window.Bot) {
-            for(let i=0; i<3; i++) {
-                const b = new window.Bot(this.scene, this.shootables);
+            // Allies
+            for(let i=0; i<2; i++) {
+                const b = new window.Bot(this.scene, this.shootables, false);
+                b.meshGroup.position.set(this.basePositions.player.x + (Math.random()-0.5)*10, 10, this.basePositions.player.z + (Math.random()-0.5)*10);
+                this.bots.push(b);
+            }
+            // Enemies
+            for(let i=0; i<4; i++) {
+                const b = new window.Bot(this.scene, this.shootables, true);
+                b.meshGroup.position.set(this.basePositions.enemy.x + (Math.random()-0.5)*10, 10, this.basePositions.enemy.z + (Math.random()-0.5)*10);
                 this.bots.push(b);
             }
         }

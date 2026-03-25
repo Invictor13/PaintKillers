@@ -203,14 +203,15 @@ class MenuScene {
             });
         });
 
-        const colorInput = document.getElementById('sel-color');
+        // Event listeners are set up using querySelector to ensure we are referencing the elements in the newly created container
+        const colorInput = this.container.querySelector('#sel-color');
         if (colorInput) {
             colorInput.addEventListener('input', (e) => {
                 this.updatePreviewColor(e.target.value);
             });
         }
 
-        const modelSelect = document.getElementById('sel-model');
+        const modelSelect = this.container.querySelector('#sel-model');
         if (modelSelect) {
             modelSelect.addEventListener('change', (e) => {
                 this.updatePreviewModel(e.target.value);
@@ -246,7 +247,8 @@ class MenuScene {
 
         // Cores
         const bodyColor = 0x111111; // Traje tático escuro
-        const paintColor = new THREE.Color(document.getElementById('sel-color').value || '#ff007f');
+        const colorInput = this.container.querySelector('#sel-color');
+        const paintColor = new THREE.Color(colorInput ? colorInput.value : '#ff007f');
 
         const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.8, metalness: 0.2 });
         const paintMat = new THREE.MeshStandardMaterial({ color: paintColor, roughness: 0.4, metalness: 0.1 });
@@ -354,7 +356,8 @@ class MenuScene {
         previewContainer.appendChild(this.previewRenderer.domElement);
 
         // Criar o modelo inicial baseado no select atual
-        const currentModel = document.getElementById('sel-model') ? document.getElementById('sel-model').value : 'masculino';
+        const modelSelect = this.container.querySelector('#sel-model');
+        const currentModel = modelSelect ? modelSelect.value : 'masculino';
         this.updatePreviewModel(currentModel);
 
         // Resize listener
@@ -411,15 +414,19 @@ class MenuScene {
 
     loadCurrentStoreSettings() {
         if (window.Store && window.Store.state) {
-            document.getElementById('sel-model').value = window.Store.state.playerModel || 'masculino';
-            document.getElementById('sel-color').value = window.Store.state.playerColor || '#ff007f';
+            const selModel = this.container.querySelector('#sel-model');
+            const selColor = this.container.querySelector('#sel-color');
+            if (selModel) selModel.value = window.Store.state.playerModel || 'masculino';
+            if (selColor) selColor.value = window.Store.state.playerColor || '#ff007f';
         }
     }
 
     saveCurrentStoreSettings() {
         if (window.Store) {
-            window.Store.set('playerModel', document.getElementById('sel-model').value);
-            window.Store.set('playerColor', document.getElementById('sel-color').value);
+            const selModel = this.container.querySelector('#sel-model');
+            const selColor = this.container.querySelector('#sel-color');
+            if (selModel) window.Store.set('playerModel', selModel.value);
+            if (selColor) window.Store.set('playerColor', selColor.value);
         }
     }
 

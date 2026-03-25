@@ -387,15 +387,15 @@ class Player {
             case 'jump':
                 spd = 5;
                 if (this.velocity.y > 0) {
-                    tBodyRotX = 1.2; tBodyRotY = 0;
-                    tHandR.set(this.animated.baseHandR.x, this.animated.baseHandR.y + 0.4, 0.7);
-                    tFootL.set(this.animated.baseFootL.x, 0.5, -0.6);
-                    tFootR.set(this.animated.baseFootR.x, 0.5, -0.6);
+                    tBodyRotX = 0.2; tBodyRotY = 0;
+                    tHandR.set(this.animated.baseHandR.x, this.animated.baseHandR.y + 0.2, 0.2);
+                    tFootL.set(this.animated.baseFootL.x, 0.2, -0.2);
+                    tFootR.set(this.animated.baseFootR.x, 0.4, -0.4);
                 } else {
-                    tBodyRotX = 1.5; wRotX = -0.2;
-                    tHandR.set(this.animated.baseHandR.x, this.animated.baseHandR.y - 1.5, 0.4);
-                    tFootL.set(this.animated.baseFootL.x, -0.6, -0.8);
-                    tFootR.set(this.animated.baseFootR.x, -0.6, -0.8);
+                    tBodyRotX = 0.1; wRotX = -0.1;
+                    tHandR.set(this.animated.baseHandR.x, this.animated.baseHandR.y - 0.2, 0.1);
+                    tFootL.set(this.animated.baseFootL.x, -0.2, 0.1);
+                    tFootR.set(this.animated.baseFootR.x, -0.1, 0.1);
                 }
                 break;
             case 'crouch':
