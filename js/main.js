@@ -23,8 +23,14 @@ class GameManager {
         this.currentScene.init(this.appContainer);
     }
 
-    // Future routing methods can be added here
-    // e.g., loadArena(arenaName)
+    loadArena(arenaName) {
+        if (arenaName === 'forest') {
+            this.loadScene(new window.ForestScene(new window.AppGameManager()));
+        } else {
+            console.warn(`Arena ${arenaName} not implemented yet, loading forest instead.`);
+            this.loadScene(new window.ForestScene(new window.AppGameManager()));
+        }
+    }
 }
 
 // Start the application when the DOM is fully loaded

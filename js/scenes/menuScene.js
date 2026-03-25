@@ -155,10 +155,12 @@ class MenuScene {
 
     handleMenuAction(action) {
         console.log(`Ação selecionada: ${action}`);
-        // Aqui conectaremos com as futuras cenas:
-        // if (action === 'arena-treino') {
-        //     this.gameManager.loadScene(new ForestArenaScene(this.gameManager));
-        // }
+
+        if (action === 'arena-treino' || action === 'select-mode') {
+            if (window.gameManager) {
+                window.gameManager.loadArena('forest');
+            }
+        }
     }
 
     setupBackground() {
