@@ -24,11 +24,29 @@ class GameManager {
     }
 
     loadArena(arenaName) {
-        if (arenaName === 'forest') {
-            this.loadScene(new window.ForestScene(new window.AppGameManager()));
-        } else {
-            console.warn(`Arena ${arenaName} not implemented yet, loading forest instead.`);
-            this.loadScene(new window.ForestScene(new window.AppGameManager()));
+        let newScene = null;
+        const manager = new window.AppGameManager();
+
+        switch (arenaName) {
+            case 'forest':
+                newScene = new window.ForestScene(manager);
+                break;
+            case 'desert':
+                newScene = new window.DesertScene(manager);
+                break;
+            case 'arctic':
+                newScene = new window.ArcticScene(manager);
+                break;
+            case 'training':
+                newScene = new window.TrainingScene(manager);
+                break;
+            default:
+                console.warn(`Arena ${arenaName} not recognized, falling back to menu.`);
+                newScene = new window.MenuScene(this);
+        }
+
+        if (newScene) {
+            this.loadScene(newScene);
         }
     }
 }

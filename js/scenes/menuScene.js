@@ -28,8 +28,8 @@ class MenuScene {
             <div class="grain"></div>
             <div class="decorative-line"></div>
 
-            <!-- UI do Menu -->
-            <div class="menu-wrapper">
+            <!-- UI do Menu Principal -->
+            <div id="main-menu" class="menu-wrapper">
                 <div class="title-container">
                     <h1 class="title">
                         <span class="paint">Paint</span>
@@ -39,15 +39,55 @@ class MenuScene {
                 </div>
 
                 <ul class="nav-menu">
-                    <li class="nav-item" data-color="#00f3ff" data-action="select-mode">Selecionar Modo de Jogo</li>
+                    <li class="nav-item" data-color="#00f3ff" data-action="select-mode">Selecionar Mapa</li>
                     <li class="nav-item" data-color="#dfff00" data-action="customize">Personalizar Jogador</li>
                     <li class="nav-item" data-color="#ff007f" data-action="arena-treino">Arena de Treino</li>
-                    <li class="nav-item" data-color="#ff3333" data-action="exit">Sair</li>
+                </ul>
+            </div>
+
+            <!-- Sub-Menu: Seleção de Mapa -->
+            <div id="map-menu" class="menu-wrapper hidden">
+                <div class="title-container">
+                    <h1 class="title" style="font-size: 3rem;">
+                        <span class="killers" style="color: #00f3ff;">Mapas</span>
+                    </h1>
+                </div>
+
+                <ul class="nav-menu">
+                    <li class="nav-item" data-color="#10b981" data-action="map-forest">Floresta Tática</li>
+                    <li class="nav-item" data-color="#d97706" data-action="map-desert">Deserto Operacional</li>
+                    <li class="nav-item" data-color="#0ea5e9" data-action="map-arctic">Ártico Extremo</li>
+                    <li class="nav-item" data-color="#9333ea" data-action="map-random">Modo Aleatório</li>
+                    <li class="nav-item" data-color="#ff3333" data-action="back-main" style="margin-top: 20px; font-size: 1.2rem;">Voltar</li>
+                </ul>
+            </div>
+
+            <!-- Sub-Menu: Personalizar -->
+            <div id="customize-menu" class="menu-wrapper hidden">
+                <div class="title-container">
+                    <h1 class="title" style="font-size: 3rem;">
+                        <span class="killers" style="color: #dfff00;">Loadout</span>
+                    </h1>
+                </div>
+
+                <div style="background: rgba(0,0,0,0.6); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); width: 100%; text-align: left; margin-bottom: 20px;">
+                    <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; display: block;">Modelo do Personagem</label>
+                    <select id="sel-model" style="width: 100%; background: #111; color: white; padding: 10px; border: 1px solid #444; border-radius: 4px; font-size: 1rem; margin-bottom: 15px;">
+                        <option value="masculino">Atirador Masculino</option>
+                        <option value="feminino">Atiradora Feminina</option>
+                    </select>
+
+                    <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; display: block;">Cor da Tinta e Roupa</label>
+                    <input type="color" id="sel-color" value="#ff007f" style="width: 100%; height: 50px; border: none; cursor: pointer; background: transparent;">
+                </div>
+
+                <ul class="nav-menu">
+                    <li class="nav-item" data-color="#dfff00" data-action="save-customize">Salvar e Voltar</li>
                 </ul>
             </div>
 
             <div class="footer-info">
-                V 1.0.4 // BATTLE NET CONNECTED
+                V 2.0.0 // BATTLE NET CONNECTED
             </div>
         `;
         appContainer.appendChild(this.container);
@@ -55,6 +95,7 @@ class MenuScene {
         this.setupAudio();
         this.setupUI();
         this.setupBackground();
+        this.loadCurrentStoreSettings();
     }
 
     destroy() {
@@ -90,7 +131,6 @@ class MenuScene {
         filter.connect(gain);
         gain.connect(this.audioCtx.destination);
 
-        // Som de "Tick" tecnológico e suave
         osc.type = 'sine';
         osc.frequency.setValueAtTime(800, this.audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1200, this.audioCtx.currentTime + 0.05);
@@ -126,18 +166,20 @@ class MenuScene {
             item.addEventListener('mouseenter', () => {
                 this.playHoverSound();
 
-                titleKillers.style.color = 'transparent';
-                titleKillers.style.webkitTextStroke = `2px ${color}`;
-                titleKillers.style.textShadow = `0 0 30px ${color}40`;
-
+                if (titleKillers) {
+                    titleKillers.style.color = 'transparent';
+                    titleKillers.style.webkitTextStroke = `2px ${color}`;
+                    titleKillers.style.textShadow = `0 0 30px ${color}40`;
+                }
                 this.targetParticleColor = this.hexToRgb(color);
             });
 
             item.addEventListener('mouseleave', () => {
-                titleKillers.style.color = 'transparent';
-                titleKillers.style.webkitTextStroke = `2px rgba(255, 255, 255, 0.8)`;
-                titleKillers.style.textShadow = 'none';
-
+                if (titleKillers) {
+                    titleKillers.style.color = 'transparent';
+                    titleKillers.style.webkitTextStroke = `2px rgba(255, 255, 255, 0.8)`;
+                    titleKillers.style.textShadow = 'none';
+                }
                 this.targetParticleColor = { r: 85, g: 85, b: 102 };
             });
 
@@ -145,7 +187,6 @@ class MenuScene {
                 item.style.transform = 'translateX(25px) scale(0.98)';
                 setTimeout(() => {
                     item.style.transform = 'translateX(15px) scale(1)';
-                    // Handle routing based on action
                     const action = item.getAttribute('data-action');
                     this.handleMenuAction(action);
                 }, 100);
@@ -153,13 +194,64 @@ class MenuScene {
         });
     }
 
+    loadCurrentStoreSettings() {
+        if (window.Store && window.Store.state) {
+            document.getElementById('sel-model').value = window.Store.state.playerModel || 'masculino';
+            document.getElementById('sel-color').value = window.Store.state.playerColor || '#ff007f';
+        }
+    }
+
+    saveCurrentStoreSettings() {
+        if (window.Store) {
+            window.Store.set('playerModel', document.getElementById('sel-model').value);
+            window.Store.set('playerColor', document.getElementById('sel-color').value);
+        }
+    }
+
+    showPanel(panelId) {
+        this.container.querySelectorAll('.menu-wrapper').forEach(p => {
+            p.classList.add('hidden');
+            p.style.display = 'none';
+        });
+        const target = this.container.querySelector(`#${panelId}`);
+        if (target) {
+            target.classList.remove('hidden');
+            target.style.display = 'flex';
+        }
+    }
+
     handleMenuAction(action) {
         console.log(`Ação selecionada: ${action}`);
 
-        if (action === 'arena-treino' || action === 'select-mode') {
-            if (window.gameManager) {
-                window.gameManager.loadArena('forest');
-            }
+        if (action === 'select-mode') {
+            this.showPanel('map-menu');
+        }
+        else if (action === 'customize') {
+            this.showPanel('customize-menu');
+        }
+        else if (action === 'back-main') {
+            this.showPanel('main-menu');
+        }
+        else if (action === 'save-customize') {
+            this.saveCurrentStoreSettings();
+            this.showPanel('main-menu');
+        }
+        else if (action === 'arena-treino') {
+            if (window.gameManager) window.gameManager.loadArena('training');
+        }
+        else if (action === 'map-forest') {
+            if (window.gameManager) window.gameManager.loadArena('forest');
+        }
+        else if (action === 'map-desert') {
+            if (window.gameManager) window.gameManager.loadArena('desert');
+        }
+        else if (action === 'map-arctic') {
+            if (window.gameManager) window.gameManager.loadArena('arctic');
+        }
+        else if (action === 'map-random') {
+            const maps = ['forest', 'desert', 'arctic'];
+            const randomMap = maps[Math.floor(Math.random() * maps.length)];
+            if (window.gameManager) window.gameManager.loadArena(randomMap);
         }
     }
 

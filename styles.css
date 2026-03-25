@@ -20,6 +20,10 @@ body {
     width: 100vw;
 }
 
+.hidden {
+    display: none !important;
+}
+
 /* Fundo Dinâmico (Canvas + Vignette) */
 #canvas-container {
     position: absolute;

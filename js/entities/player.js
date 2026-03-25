@@ -26,15 +26,29 @@ class Player {
 
         this.fpsWeaponGrp = new THREE.Group();
         this.tpsPlayerGrp = new THREE.Group();
-        this.buildWeapons();
-
         this.recoilActive = 0;
 
+        // Extended materials for the full player model
+        this.mats = {
+            skin: new THREE.MeshStandardMaterial({ color: '#f1c27d', flatShading: true, roughness: 0.5 }),
+            jersey: new THREE.MeshStandardMaterial({ color: '#ff007f', flatShading: true, roughness: 0.8 }),
+            pants: new THREE.MeshStandardMaterial({ color: '#111111', flatShading: true, roughness: 0.9 }),
+            gear: new THREE.MeshStandardMaterial({ color: '#222222', flatShading: true, roughness: 0.7 }),
+            lens: new THREE.MeshStandardMaterial({ color: '#dfff00', flatShading: true, roughness: 0.1, metalness: 0.8 }),
+            hair: new THREE.MeshStandardMaterial({ color: '#111111', flatShading: true, roughness: 0.8 }),
+            markerBody: new THREE.MeshStandardMaterial({ color: '#00f3ff', flatShading: true, metalness: 0.5, roughness: 0.4 }),
+            markerParts: new THREE.MeshStandardMaterial({ color: '#111111', flatShading: true, roughness: 0.6 }),
+            paintball: new THREE.MeshBasicMaterial({ color: '#00f3ff' })
+        };
+
+        this.buildWeapons();
         this.setupInputs();
     }
 
     buildWeapons() {
-        // FPS Weapon
+        const isFemale = (window.Store && window.Store.state.playerModel === 'feminino');
+
+        // ==== FPS WEAPON (First Person View) ====
         const fBody = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.35), this.mats.markerBody);
         const fBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.4).rotateX(Math.PI/2), this.mats.markerParts);
         fBarrel.position.set(0, 0.03, -0.35);
@@ -47,16 +61,73 @@ class Player {
         this.fpsWeaponGrp.position.set(0.2, -0.2, -0.6);
         this.pitchObject.add(this.fpsWeaponGrp);
 
-        // TPS Player Dummy
-        const pBody = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.2).translate(0, 1.1, 0), new THREE.MeshStandardMaterial({color: '#1e3a8a'}));
-        const pHead = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25).translate(0, 1.6, 0), this.mats.markerParts);
-        const pLegL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15).translate(-0.12, 0.4, 0), new THREE.MeshStandardMaterial({color: '#111827'}));
-        const pLegR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15).translate(0.12, 0.4, 0), new THREE.MeshStandardMaterial({color: '#111827'}));
+        // ==== TPS WEAPON & BODY (Third Person View) ====
+        // Use the proper models based on gender.
+        // We will build a simplified static model for TPS since full IK animation
+        // across the network/singleplayer requires an animation loop which is complex.
 
+        const shoulderLocal = new THREE.Vector3(0, 1.45, 0);
+
+        if (isFemale) {
+            // Female Torso
+            const torsoUpperLen = 0.3;
+            const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.10, torsoUpperLen, 12).translate(0, -torsoUpperLen/2, 0), this.mats.jersey);
+            chest.position.copy(shoulderLocal);
+            const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.16, 0.25, 12).translate(0, -0.125, 0), this.mats.pants);
+            pelvis.position.y = -torsoUpperLen;
+            chest.add(pelvis);
+            this.tpsPlayerGrp.add(chest);
+
+            // Female Head & Mask
+            const headGrp = new THREE.Group();
+            headGrp.position.copy(shoulderLocal); headGrp.position.y += 0.05;
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.15), this.mats.skin); head.position.y = 0.09; headGrp.add(head);
+            const hair = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.16), this.mats.hair); hair.position.y = 0.18; headGrp.add(hair);
+            const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.01, 0.3, 8).translate(0,-0.15,0), this.mats.hair); tail.position.set(0,0.18,-0.08); tail.rotation.x=0.2; headGrp.add(tail);
+            const mask = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.12), this.mats.gear); mask.position.set(0,0.08,0.09); headGrp.add(mask);
+            const lens = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.06, 0.04), this.mats.lens); lens.position.set(0,0.11,0.14); headGrp.add(lens);
+            this.tpsPlayerGrp.add(headGrp);
+
+            // Legs
+            const legGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.96, 8).translate(0, -0.48, 0);
+            const legL = new THREE.Mesh(legGeo, this.mats.pants); legL.position.set(-0.11, 0.9, 0); this.tpsPlayerGrp.add(legL);
+            const legR = new THREE.Mesh(legGeo, this.mats.pants); legR.position.set(0.11, 0.9, 0); this.tpsPlayerGrp.add(legR);
+
+            // Arms (Static holding pose)
+            const armGeo = new THREE.CylinderGeometry(0.05, 0.03, 0.65, 8).translate(0, -0.325, 0);
+            const armL = new THREE.Mesh(armGeo, this.mats.jersey); armL.position.set(-0.16, 1.45, 0); armL.rotation.x = 0.5; this.tpsPlayerGrp.add(armL);
+            const armR = new THREE.Mesh(armGeo, this.mats.jersey); armR.position.set(0.16, 1.45, 0); armR.rotation.x = 0.5; this.tpsPlayerGrp.add(armR);
+        } else {
+            // Male Torso
+            const torsoLen = 0.55;
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.35, torsoLen, 0.2).translate(0, -torsoLen/2, 0), this.mats.jersey);
+            torso.position.copy(shoulderLocal);
+            this.tpsPlayerGrp.add(torso);
+
+            // Male Head & Mask
+            const headGrp = new THREE.Group();
+            headGrp.position.copy(shoulderLocal); headGrp.position.y += 0.05;
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), this.mats.gear); head.position.y = 0.1; headGrp.add(head);
+            const mask = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.12), this.mats.gear); mask.position.set(0,0.1,0.09); headGrp.add(mask);
+            const lens = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.07, 0.04), this.mats.lens); lens.position.set(0,0.13,0.14); headGrp.add(lens);
+            this.tpsPlayerGrp.add(headGrp);
+
+            // Legs
+            const legGeo = new THREE.CylinderGeometry(0.09, 0.07, 0.9, 8).translate(0, -0.45, 0);
+            const legL = new THREE.Mesh(legGeo, this.mats.pants); legL.position.set(-0.15, 0.9, 0); this.tpsPlayerGrp.add(legL);
+            const legR = new THREE.Mesh(legGeo, this.mats.pants); legR.position.set(0.15, 0.9, 0); this.tpsPlayerGrp.add(legR);
+
+            // Arms
+            const armGeo = new THREE.CylinderGeometry(0.06, 0.04, 0.7, 8).translate(0, -0.35, 0);
+            const armL = new THREE.Mesh(armGeo, this.mats.jersey); armL.position.set(-0.22, 1.45, 0); armL.rotation.x = 0.5; this.tpsPlayerGrp.add(armL);
+            const armR = new THREE.Mesh(armGeo, this.mats.jersey); armR.position.set(0.22, 1.45, 0); armR.rotation.x = 0.5; this.tpsPlayerGrp.add(armR);
+        }
+
+        // Attach TPS Weapon to right side
         const tpsWeapon = this.fpsWeaponGrp.clone();
-        tpsWeapon.position.set(0.2, 1.2, -0.3);
+        tpsWeapon.position.set(0.18, 0.9, 0.3); // Positioned near hip/hands
+        this.tpsPlayerGrp.add(tpsWeapon);
 
-        this.tpsPlayerGrp.add(pBody, pHead, pLegL, pLegR, tpsWeapon);
         this.scene.add(this.tpsPlayerGrp);
         this.tpsPlayerGrp.visible = false;
     }
