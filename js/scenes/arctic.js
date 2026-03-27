@@ -80,8 +80,11 @@ class ArcticScene {
             let bY = this.getTerrainHeight(this.basePositions.player.x, this.basePositions.player.z);
             let rY = this.getTerrainHeight(this.basePositions.enemy.x, this.basePositions.enemy.z);
 
-            const blueFlag = new window.Flag(this.scene, 'blue', new THREE.Vector3(this.basePositions.player.x, bY, this.basePositions.player.z), 0x00f3ff);
-            const redFlag = new window.Flag(this.scene, 'red', new THREE.Vector3(this.basePositions.enemy.x, rY, this.basePositions.enemy.z), 0xff007f);
+            const playerColor = (window.Store && window.Store.state && window.Store.state.playerColor) ? parseInt(window.Store.state.playerColor.replace('#', '0x')) : 0x00f3ff;
+            const enemyColor = (window.Store && window.Store.state && window.Store.state.enemyColor) ? parseInt(window.Store.state.enemyColor.replace('#', '0x')) : 0xff007f;
+
+            const blueFlag = new window.Flag(this.scene, 'blue', new THREE.Vector3(this.basePositions.player.x, bY, this.basePositions.player.z), playerColor);
+            const redFlag = new window.Flag(this.scene, 'red', new THREE.Vector3(this.basePositions.enemy.x, rY, this.basePositions.enemy.z), enemyColor);
 
             this.gameManager.registerBases(this.basePositions.player, this.basePositions.enemy);
             this.gameManager.registerFlag(blueFlag);
