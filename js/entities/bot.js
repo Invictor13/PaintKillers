@@ -29,7 +29,7 @@ class Bot {
         // Initial setup spawn (can be overridden by game manager)
         this.meshGroup.position.set(
             this.isEnemy ? (Math.random() * 20 + 20) : (Math.random() * -20 - 20),
-            10,
+            20,
             (Math.random() - 0.5) * 40
         );
         this.scene.add(this.meshGroup);
@@ -123,16 +123,31 @@ class Bot {
         if (!this.isActive) return;
 
         // Terrain adaptation
-        this.raycaster.set(new THREE.Vector3(this.meshGroup.position.x, this.meshGroup.position.y + 2, this.meshGroup.position.z), this.downVec);
-        const groundHits = this.raycaster.intersectObjects(this.shootables, false);
         let targetY = 0;
-        if (groundHits.length > 0) {
-            targetY = groundHits[0].point.y;
-        } else if (window.getTerrainHeight) {
-            targetY = window.getTerrainHeight(this.meshGroup.position.x, -this.meshGroup.position.z);
+        if (window.getTerrainHeight) {
+            targetY = window.getTerrainHeight(this.meshGroup.position.x, this.meshGroup.position.z);
         }
 
-        this.velocity.y -= 9.8 * delta; // Gravity
+        // Raycast down for obstacles (bunkers, ruins) above ground
+        this.raycaster.set(new THREE.Vector3(this.meshGroup.position.x, this.meshGroup.position.y + 2, this.meshGroup.position.z), this.downVec);
+        const groundHits = this.raycaster.intersectObjects(this.shootables, true);
+
+        // Filter out hits on our own body parts
+        let validHit = null;
+        for (let i = 0; i < groundHits.length; i++) {
+            const obj = groundHits[i].object;
+            if (obj && obj.userData && obj.userData.entity === this) continue; // Ignore self
+            validHit = groundHits[i];
+            break;
+        }
+
+        if (validHit) {
+            if (validHit.point.y > targetY) {
+                targetY = validHit.point.y;
+            }
+        }
+
+        this.velocity.y -= 25.0 * delta; // Gravity matching player
         this.meshGroup.position.y += this.velocity.y * delta;
 
         if (this.meshGroup.position.y <= targetY) {
