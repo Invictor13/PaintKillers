@@ -86,11 +86,14 @@ class MenuScene {
                         <option value="feminino">Atiradora Feminina</option>
                     </select>
 
-                    <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; display: block;">Cor da Tinta e Roupa</label>
-                    <input type="color" id="sel-color" value="#ff007f" style="width: 100%; height: 50px; border: none; cursor: pointer; background: transparent;">
+                    <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; display: block;">Cor da Tinta e Roupa (Aliados e Você)</label>
+                    <input type="color" id="sel-color" value="#00f3ff" style="width: 100%; height: 50px; border: none; cursor: pointer; background: transparent;">
 
                     <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-top: 15px; margin-bottom: 5px; display: block;">Tamanho do Esquadrão (Bots por Time)</label>
-                    <input type="number" id="sel-bots" min="0" max="10" value="3" style="width: 100%; background: #111; color: white; padding: 10px; border: 1px solid #444; border-radius: 4px; font-size: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="range" id="sel-bots" min="0" max="10" value="3" style="flex-grow: 1; cursor: pointer;" oninput="document.getElementById('sel-bots-val').innerText = this.value">
+                        <span id="sel-bots-val" style="color: white; font-weight: bold; font-size: 1.2rem; min-width: 30px; text-align: center;">3</span>
+                    </div>
                 </div>
 
                 <ul class="nav-menu">
@@ -420,9 +423,13 @@ class MenuScene {
             const selModel = this.container.querySelector('#sel-model');
             const selColor = this.container.querySelector('#sel-color');
             const selBots = this.container.querySelector('#sel-bots');
+            const selBotsVal = this.container.querySelector('#sel-bots-val');
             if (selModel) selModel.value = window.Store.state.playerModel || 'masculino';
-            if (selColor) selColor.value = window.Store.state.playerColor || '#ff007f';
-            if (selBots) selBots.value = window.Store.state.squadSize !== undefined ? window.Store.state.squadSize : 3;
+            if (selColor) selColor.value = window.Store.state.playerColor || '#00f3ff';
+            if (selBots) {
+                selBots.value = window.Store.state.squadSize !== undefined ? window.Store.state.squadSize : 3;
+                if (selBotsVal) selBotsVal.innerText = selBots.value;
+            }
         }
     }
 

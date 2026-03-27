@@ -7,7 +7,8 @@ class GameStore {
 
     // Define o estado padrão
     defaultState = {
-        playerColor: '#ff007f', // Cor primária padrão
+        playerColor: '#00f3ff', // Cor primária padrão para aliados
+        enemyColor: '#ff007f', // Cor padrão de inimigos
         gameMode: 'treino',
         playerModel: 'masculino',
         squadSize: 3, // Padrão: 3 membros por equipe

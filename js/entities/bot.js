@@ -6,7 +6,14 @@ class Bot {
         this.isActive = true;
         this.health = 100;
         this.isEnemy = isEnemy;
-        this.teamColor = isEnemy ? 0xff3333 : (window.Store && window.Store.state && window.Store.state.playerColor ? parseInt(window.Store.state.playerColor.replace('#', '0x')) : 0x0000ff);
+
+        // Define team colors
+        const defaultAllyColor = '#00f3ff';
+        const defaultEnemyColor = '#ff007f';
+        const playerColor = (window.Store && window.Store.state && window.Store.state.playerColor) ? window.Store.state.playerColor : defaultAllyColor;
+        const enemyColor = (window.Store && window.Store.state && window.Store.state.enemyColor) ? window.Store.state.enemyColor : defaultEnemyColor;
+
+        this.teamColor = isEnemy ? parseInt(enemyColor.replace('#', '0x')) : parseInt(playerColor.replace('#', '0x'));
 
         // Target tracking
         this.target = null;
@@ -34,6 +41,9 @@ class Bot {
         );
         this.scene.add(this.meshGroup);
 
+        // Team indicator
+        this.buildIndicator();
+
         // Add to shootables so player can shoot them
         this.shootables.push(this.mesh);
         this.shootables.push(this.headMesh);
@@ -41,6 +51,18 @@ class Bot {
         // Raycaster for ground detection
         this.raycaster = new THREE.Raycaster();
         this.downVec = new THREE.Vector3(0, -1, 0);
+    }
+
+    buildIndicator() {
+        const geo = new THREE.ConeGeometry(0.15, 0.3, 4);
+        const mat = new THREE.MeshBasicMaterial({ color: this.teamColor, wireframe: false });
+        this.indicator = new THREE.Mesh(geo, mat);
+
+        // Point downwards
+        this.indicator.rotation.x = Math.PI;
+        this.indicator.position.y = 2.5;
+
+        this.meshGroup.add(this.indicator);
     }
 
     buildMesh() {
@@ -96,6 +118,10 @@ class Bot {
         this.meshGroup.rotation.x = -Math.PI / 2;
         this.meshGroup.position.y += 0.2;
 
+        if (this.indicator) {
+            this.indicator.visible = false;
+        }
+
         // Remove from shootables
         const index = this.shootables.indexOf(this.mesh);
         if (index > -1) this.shootables.splice(index, 1);
@@ -110,6 +136,11 @@ class Bot {
         this.health = 100;
         this.isActive = true;
         this.meshGroup.rotation.x = 0;
+
+        if (this.indicator) {
+            this.indicator.visible = true;
+        }
+
         this.meshGroup.position.set(
             (Math.random() - 0.5) * 60,
             10, // Drop from sky
@@ -121,6 +152,12 @@ class Bot {
 
     update(delta, playerPos) {
         if (!this.isActive) return;
+
+        // Animate indicator
+        if (this.indicator) {
+            this.indicator.rotation.y += delta * 2;
+            this.indicator.position.y = 2.5 + Math.sin(Date.now() * 0.005) * 0.1;
+        }
 
         // Terrain adaptation
         let targetY = 0;
