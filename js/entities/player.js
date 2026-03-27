@@ -327,12 +327,19 @@ class Player {
             this.yawObject.position.y += this.velocity.y * delta;
 
             const floorY = window.getTerrainHeight ? window.getTerrainHeight(this.yawObject.position.x, this.yawObject.position.z) : 0;
-            const playerHeight = floorY + (this.moveState.crouch ? 1.0 : 1.6);
+            // Target height for camera/head
+            const targetHeight = floorY + (this.moveState.crouch ? 0.8 : 1.6);
 
-            if(this.yawObject.position.y < playerHeight) {
+            // Smoothly interpolate the yaw object to the target height
+            if (this.yawObject.position.y < targetHeight) {
+                // Ground collision
                 this.velocity.y = 0;
-                this.yawObject.position.y = playerHeight;
+                this.yawObject.position.y = targetHeight;
                 this.canJump = true;
+            } else if (this.canJump && Math.abs(this.yawObject.position.y - targetHeight) > 0.05) {
+                // Standing up or crouching while on ground
+                this.yawObject.position.y += (targetHeight - this.yawObject.position.y) * 10.0 * delta;
+                if (this.yawObject.position.y < floorY + 0.8) this.yawObject.position.y = floorY + 0.8;
             }
         }
 
@@ -399,10 +406,10 @@ class Player {
                 }
                 break;
             case 'crouch':
-                tBodyY = -0.4; tBodyRotY = -0.4; tBodyRotX = 0.1;
-                tFootL.set(this.animated.baseFootL.x, -tBodyY, 0.3);
-                tFootR.set(this.animated.baseFootR.x, -tBodyY + 0.3, -0.3);
-                tHandR.set(this.animated.baseHandR.x, this.animated.baseHandR.y - 0.35, this.animated.baseHandR.z);
+                tBodyY = -0.6; tBodyRotY = -0.4; tBodyRotX = 0.3;
+                tFootL.set(this.animated.baseFootL.x, this.animated.baseFootL.y, 0.3);
+                tFootR.set(this.animated.baseFootR.x, this.animated.baseFootR.y, -0.3);
+                tHandR.set(this.animated.baseHandR.x, this.animated.baseHandR.y - 0.6, this.animated.baseHandR.z);
                 break;
         }
 
@@ -430,7 +437,11 @@ class Player {
 
         // Apply transformations
         this.tpsPlayerGrp.position.copy(this.yawObject.position);
-        this.tpsPlayerGrp.position.y -= 1.6; // Feet on floor
+
+        // Ensure feet stay on the floor properly regardless of crouch camera height
+        const actualFloorY = window.getTerrainHeight ? window.getTerrainHeight(this.yawObject.position.x, this.yawObject.position.z) : 0;
+        this.tpsPlayerGrp.position.y = actualFloorY;
+
         this.tpsPlayerGrp.rotation.y = this.yawObject.rotation.y + Math.PI;
 
         this.animated.pBodyGroup.position.y = this.animated.currentBodyY;

@@ -88,6 +88,9 @@ class MenuScene {
 
                     <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; display: block;">Cor da Tinta e Roupa</label>
                     <input type="color" id="sel-color" value="#ff007f" style="width: 100%; height: 50px; border: none; cursor: pointer; background: transparent;">
+
+                    <label style="color: #aaa; font-weight: bold; font-size: 0.9rem; margin-top: 15px; margin-bottom: 5px; display: block;">Tamanho do Esquadrão (Bots por Time)</label>
+                    <input type="number" id="sel-bots" min="0" max="10" value="3" style="width: 100%; background: #111; color: white; padding: 10px; border: 1px solid #444; border-radius: 4px; font-size: 1rem;">
                 </div>
 
                 <ul class="nav-menu">
@@ -416,8 +419,10 @@ class MenuScene {
         if (window.Store && window.Store.state) {
             const selModel = this.container.querySelector('#sel-model');
             const selColor = this.container.querySelector('#sel-color');
+            const selBots = this.container.querySelector('#sel-bots');
             if (selModel) selModel.value = window.Store.state.playerModel || 'masculino';
             if (selColor) selColor.value = window.Store.state.playerColor || '#ff007f';
+            if (selBots) selBots.value = window.Store.state.squadSize !== undefined ? window.Store.state.squadSize : 3;
         }
     }
 
@@ -425,8 +430,10 @@ class MenuScene {
         if (window.Store) {
             const selModel = this.container.querySelector('#sel-model');
             const selColor = this.container.querySelector('#sel-color');
+            const selBots = this.container.querySelector('#sel-bots');
             if (selModel) window.Store.set('playerModel', selModel.value);
             if (selColor) window.Store.set('playerColor', selColor.value);
+            if (selBots) window.Store.set('squadSize', parseInt(selBots.value, 10));
         }
     }
 
