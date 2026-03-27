@@ -131,9 +131,19 @@ class Bot {
         // Raycast down for obstacles (bunkers, ruins) above ground
         this.raycaster.set(new THREE.Vector3(this.meshGroup.position.x, this.meshGroup.position.y + 2, this.meshGroup.position.z), this.downVec);
         const groundHits = this.raycaster.intersectObjects(this.shootables, true);
-        if (groundHits.length > 0) {
-            if (groundHits[0].point.y > targetY) {
-                targetY = groundHits[0].point.y;
+
+        // Filter out hits on our own body parts
+        let validHit = null;
+        for (let i = 0; i < groundHits.length; i++) {
+            const obj = groundHits[i].object;
+            if (obj && obj.userData && obj.userData.entity === this) continue; // Ignore self
+            validHit = groundHits[i];
+            break;
+        }
+
+        if (validHit) {
+            if (validHit.point.y > targetY) {
+                targetY = validHit.point.y;
             }
         }
 

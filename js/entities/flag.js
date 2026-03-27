@@ -42,7 +42,7 @@ class Flag {
         this.meshGroup.add(this.glow);
     }
 
-    update(time, delta) {
+    update(delta, time) {
         // Wind Animation
         const posAttribute = this.cloth.geometry.attributes.position;
         for (let i = 0; i < posAttribute.count; i++) {

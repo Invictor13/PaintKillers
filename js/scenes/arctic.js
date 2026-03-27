@@ -92,15 +92,19 @@ class ArcticScene {
         }
 
         // Spawn Bots (Allies and Enemies)
-        if (window.Bot) {
-            // Allies
-            for(let i=0; i<2; i++) {
+        let squadSize = (window.Store && window.Store.state && window.Store.state.squadSize !== undefined) ? window.Store.state.squadSize : 3;
+
+        if (window.Bot && squadSize > 0) {
+            // Allies (squadSize - 1, since player counts as 1 for the team size, or just squadSize)
+            // Assuming squadSize is total bots per team.
+            let alliesCount = Math.max(0, squadSize - 1); // Subtract 1 for player
+            for(let i=0; i<alliesCount; i++) {
                 const b = new window.Bot(this.scene, this.shootables, false);
                 b.meshGroup.position.set(this.basePositions.player.x + (Math.random()-0.5)*10, 20, this.basePositions.player.z + (Math.random()-0.5)*10);
                 this.bots.push(b);
             }
-            // Enemies
-            for(let i=0; i<4; i++) {
+            // Enemies (full squadSize)
+            for(let i=0; i<squadSize; i++) {
                 const b = new window.Bot(this.scene, this.shootables, true);
                 b.meshGroup.position.set(this.basePositions.enemy.x + (Math.random()-0.5)*10, 20, this.basePositions.enemy.z + (Math.random()-0.5)*10);
                 this.bots.push(b);
@@ -119,23 +123,6 @@ class ArcticScene {
         window.updateScoreUI = (score) => {
             const el = document.getElementById('score-display');
             if (el) el.innerText = "PONTOS: " + score;
-        };
-
-        window.updateTeamScoreUI = (blue, red) => {
-            const elBlue = document.getElementById('score-blue');
-            const elRed = document.getElementById('score-red');
-            if (elBlue) elBlue.innerText = blue;
-            if (elRed) elRed.innerText = red;
-        };
-
-        window.showCTFMessage = (msg, isWarning) => {
-            const el = document.getElementById('ctf-message');
-            if (el) {
-                el.innerText = msg;
-                el.style.color = isWarning ? '#ff007f' : '#00f3ff';
-                el.style.opacity = 1;
-                setTimeout(() => el.style.opacity = 0, 3000);
-            }
         };
 
         window.updateTeamScoreUI = (blue, red) => {
@@ -422,6 +409,8 @@ class ArcticScene {
                 this.gameManager.handleCTFLogic(this.player, this.bots);
             }
         }
+
+        if (this.gameManager) this.gameManager.update(delta, time);
 
         this.animatedObjects.pines.forEach(layer => {
             layer.rotation.z = Math.sin(time * 1.0 * 0.5 + layer.userData.offset) * (0.04 * 1.5);

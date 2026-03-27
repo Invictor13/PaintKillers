@@ -63,9 +63,13 @@ class AppGameManager {
             if (!flag.isCarried) {
                 for (let e of allEntities) {
                     let pos = e.isPlayer ? e.entity.yawObject.position : e.entity.meshGroup.position;
-                    let dist = pos.distanceTo(flag.meshGroup.position);
 
-                    if (dist < 2.5) {
+                    // Use 2D distance to ignore Y-axis differences (jumping/crouching shouldn't prevent pickup)
+                    let dx = pos.x - flag.meshGroup.position.x;
+                    let dz = pos.z - flag.meshGroup.position.z;
+                    let dist2D = Math.sqrt(dx*dx + dz*dz);
+
+                    if (dist2D < 3.0) {
                         // Enemy team picks up the flag to steal it
                         if (e.team !== flag.team) {
                             flag.pickup(e.entity);
@@ -90,7 +94,12 @@ class AppGameManager {
                 let carrier = flag.carrier;
                 let cPos = carrier.yawObject ? carrier.yawObject.position : carrier.meshGroup.position;
 
-                if (carrierBasePos && cPos.distanceTo(carrierBasePos) < 5.0) {
+                // Use 2D distance for base drop-off too
+                let dx = cPos.x - carrierBasePos.x;
+                let dz = cPos.z - carrierBasePos.z;
+                let dist2D = Math.sqrt(dx*dx + dz*dz);
+
+                if (carrierBasePos && dist2D < 6.0) {
                     // Carrier brought enemy flag to their own base
 
                     // Optional strict CTF rule: Can only capture if own flag is at base.
