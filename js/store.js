@@ -10,7 +10,7 @@ class GameStore {
         playerColor: '#ff007f', // Cor primária padrão
         gameMode: 'treino',
         playerModel: 'masculino',
-        // Outros estados...
+        squadSize: 3, // Padrão: 3 membros por equipe
     };
 
     state = { ...this.defaultState };

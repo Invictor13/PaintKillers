@@ -92,7 +92,10 @@ class ArcticScene {
         }
 
         // Spawn Bots (Allies and Enemies)
-        let squadSize = (window.Store && window.Store.state && window.Store.state.squadSize !== undefined) ? window.Store.state.squadSize : 3;
+        let squadSize = 3;
+        if (window.Store && window.Store.state && window.Store.state.squadSize !== undefined) {
+            squadSize = parseInt(window.Store.state.squadSize, 10);
+        }
 
         if (window.Bot && squadSize > 0) {
             // Allies (squadSize - 1, since player counts as 1 for the team size, or just squadSize)
